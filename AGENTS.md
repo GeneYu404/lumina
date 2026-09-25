@@ -35,11 +35,30 @@ hash 来自 `Cargo.lock`）。它让 cargo 编译在不同项目间共享增量�
 - ❌ 在 `.gitignore` 里写错规则导致 symlink 被解引用为普通目录
 - ❌ 修改 Cargo.lock 后忘记重建 symlink（mbx 会按新 hash 自动建，但 symlink 仍要保留）
 
-**允许**：
+**允许 / 已知状态与恢复**：
 
-- ✅ `git status` 显示 `D src-tauri/target` 时 → 这是误删，用 `git update-index --add --cacheinfo 120000,<hash>,src-tauri/target` 加回；hash 从 `git ls-tree origin/main src-tauri/target` 或 `git cat-file -p HEAD:src-tauri/target` 取
-- ✅ 编译时 cargo / tauri 命令会**自动**通过 symlink 使用 mbx 缓存
-- ✅ 移动 / 删除整个项目后，mbx 缓存仍在 `D:\mbx\targets\v1\`，可复用
+本机 `core.symlinks=false`（`git config core.symlinks` 查看），所以工作树里的形态
+和 git 索引里的形态**天然不一致**，这是正常状态：
+
+| 位置 | 形态 | 说明 |
+| --- | --- | --- |
+| git 索引 / HEAD | `120000` symlink → `D:/mbx/targets/v1/<hash>` | 唯一正确的入库形态 |
+| 工作树（clone 出来） | 82 字节普通文件，内容是路径 | git 的占位形式；**会挡构建** |
+| 工作树（构建可用态） | 真实目录 | mbx 报 `not a directory` 时就切到这个 |
+
+**故障恢复（按实际验证过的步骤）**：
+
+1. **mbx 报 `could not inspect Cargo target directory ...: not a directory`**
+   （工作树是占位文件）→ 删掉占位文件、`mkdir src-tauri\target`、重跑
+   `bun run tauri build`。本机创建真 symlink 需要管理员权限，所以用真实目录；
+   mbx 通过 shims 缓存编译，目录形态不影响命中（构建日志 `mbx[...hits]` 可验证）。
+2. **`git status` 出现 ` D src-tauri/target`**（真实目录 vs 索引 symlink 条目）
+   → 这是上面说的形态差异，**不是误删**。绝不要 `git add` / `git rm` 这个路径。
+   要让 status 干净：`git update-index --skip-worktree src-tauri/target`
+   （只影响本机，不入库）。若索引条目真的丢了，从 `git cat-file -p HEAD:src-tauri/target`
+   取 blob hash 后 `git update-index --add --cacheinfo 120000,<hash>,src-tauri/target` 加回。
+3. **索引 symlink 条目丢失**（`git ls-files -s src-tauri/target` 无输出）
+   → 用上面的 `cacheinfo` 加回，hash 也可靠 `git ls-tree origin/main src-tauri/target` 取。
 
 **怎么判断自己没破坏它**：
 
@@ -48,10 +67,10 @@ git ls-tree HEAD src-tauri/target
 # 应该输出: 120000 blob <hash>  src-tauri/target
 
 git ls-files -s src-tauri/target
-# 工作树里也应该是 120000，不是普通文件或目录
+# 索引里必须是 120000；工作树是普通文件或目录都算正常（见上表）
 ```
 
-如果是 `100644` 或 `<DIR>`，说明 symlink 没了，立刻停下恢复。
+如果索引里变成了 `100644` 或干脆没了，立刻按第 3 条恢复。
 
 ## 4. 提交与推送
 
