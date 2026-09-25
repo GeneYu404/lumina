@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Windows 11 风格的图片查看器：缩放、平移、旋转、裁剪、调色、幻灯片放映、EXIF 信息。" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='6' y1='6' x2='42' y2='42' gradientUnits='userSpaceOnUse'%3E%3Cstop stop-color='%2362D0FF'/%3E%3Cstop offset='1' stop-color='%231A6FE0'/%3E%3C/linearGradient%3E%3CclipPath id='c'%3E%3Crect x='5' y='8' width='38' height='32' rx='7'/%3E%3C/clipPath%3E%3C/defs%3E%3Crect x='5' y='8' width='38' height='32' rx='7' fill='url(%23a)'/%3E%3Cg clip-path='url(%23c)'%3E%3Ccircle cx='32' cy='18' r='4.5' fill='%23FFD66B'/%3E%3Cpath d='M2 36 L17 21 L28 32 L33 27 L46 40 V44 H2 Z' fill='%23E6F4FF'/%3E%3C/g%3E%3C/svg%3E"
+    />
+    <title>拾光 Lumina · 图片与视频查看器</title>
+    <script>
+      (function () {
+        try {
+          var s = JSON.parse(localStorage.getItem("pv-settings-v1") || "{}");
+          var t = s.theme || "system";
+          if (t === "system") {
+            t = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+          }
+          document.documentElement.setAttribute("data-theme", t);
+          if (window.__TAURI_INTERNALS__) document.documentElement.setAttribute("data-desktop", "true");
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
