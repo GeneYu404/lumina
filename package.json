@@ -9,8 +9,7 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "tauri": "tauri",
-    "icons": "node tools/make-icons.mjs",
-    "package:portable": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/package-portable.ps1"
+    "icons": "node tools/make-icons.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",

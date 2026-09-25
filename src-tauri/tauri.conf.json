@@ -4,9 +4,9 @@
   "version": "1.0.0",
   "identifier": "app.lumina.viewer",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "bun run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -35,7 +35,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [],
     "publisher": "Lumina",
     "shortDescription": "拾光 · 图片与视频查看器",
     "longDescription": "Windows 11 风格的图片与视频查看器：缩放、平移、旋转、裁剪、调色、视频播放、幻灯片放映与 EXIF 信息。",
@@ -63,11 +63,6 @@
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
-      },
-      "nsis": {
-        "installMode": "currentUser",
-        "languages": ["SimpChinese", "English"],
-        "displayLanguageSelector": false
       }
     }
   }
