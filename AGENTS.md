@@ -130,7 +130,7 @@ git ls-files -s src-tauri/target
 
 ```bash
 bun install                   # 增量应该 < 1s
-bun run fetch:ffmpeg          # 仅新机器/换构建时；已存在会跳过
+bun run build:sidecar         # 仅换 sidecar 时（需 MSYS2 MINGW64；已构建则秒过）
 bun run typecheck             # TS 7 通过
 bun run build                 # vite build 几百毫秒
 bun run tauri build           # lumina.exe + ffmpeg sidecar，2 分钟左右
@@ -141,6 +141,12 @@ bun run tauri build           # lumina.exe + ffmpeg sidecar，2 分钟左右
 ```bash
 cd src-tauri && cargo test ffmpeg_sidecar    # 定位 / eac3 解码器 / 解码出 PCM
 ```
+
+sidecar 本体（`tools/build-ffmpeg-sidecar.sh`）有三个坑，都写进脚本注释了：
+`--pkg-config-flags=--static` 缺失 → 动态依赖 MSYS2 的 DLL，目标机器
+`STATUS_DLL_NOT_FOUND`；`--enable-filter=` 那批 `ffmpeg_select` 滤镜缺失 → configure
+**静默**丢掉 ffmpeg 程序，白编 200 个文件；configure 必须在 `MSYSTEM=MINGW64` 下跑，
+MSYS 环境会被直接拒绝。
 
 不要省掉 `bun run typecheck` —— TypeScript 7 比 5 严格得多，新代码里写错 `tsconfig.json` 兼容项会立刻挂。
 

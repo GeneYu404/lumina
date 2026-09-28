@@ -6,19 +6,20 @@
 | | Tauri（本项目） | Electron |
 | --- | --- | --- |
 | 交付形态 | 免安装目录（`lumina.exe` + FFmpeg sidecar）| 安装包 80–120 MB |
-| 体积 | 主程序约 **6 MB**；随包 FFmpeg 正在从 100 MB 精简到 5–15 MB | 80–120 MB |
+| 体积 | 合计约 **12.5 MB**（主程序 6.3 MB + sidecar 6.2 MB）| 80–120 MB |
 | 空闲内存 | 低（共享系统 WebView2）| 高（自带 Chromium + Node） |
 | 界面效果 | 与网页版一致 | 与网页版一致 |
 | 系统能力 | 文件关联、右键菜单、壁纸、会话恢复 | 同 |
 
 ## 便携版（免安装目录）
 
-产物是 `src-tauri\target\release\` 下的两个文件：
+产物是 `src-tauri\target\release\` 下的三个文件：
 
 | 文件 | 体积 | 说明 |
 | --- | --- | --- |
-| `lumina.exe` | 约 6 MB | 主程序 |
-| `ffmpeg.exe` | 当前 100 MB（目标 5–15 MB）| 解码兜底 sidecar，只在 WebView2 解不了的音轨（如 E-AC-3）时才会被 spawn |
+| `lumina.exe` | 6.3 MB | 主程序 |
+| `ffmpeg.exe` | 6.2 MB | 解码兜底 sidecar（自编译最小构建，LGPL 2.1+），只在 WebView2 解不了的音轨（如 E-AC-3）时才会被 spawn |
+| `LICENSE.ffmpeg.txt` | 36 KB | 随包许可证 |
 
 两个文件必须放在一起：`src-tauri\src\ffmpeg_sidecar.rs` 按「可执行文件同级」定位它。
 需要系统已装 WebView2（Win10 1803+ / Win11 默认自带）。
@@ -68,15 +69,43 @@ lumina.exe --help                         # 全部选项
 
 ```bash
 bun install                          # 安装依赖（首次约 4s；增量 1s 内）
-bun run fetch:ffmpeg                 # 下载 FFmpeg sidecar 到 src-tauri\bin（跳过则从仓库取）
+bun run fetch:ffmpeg                 # 拉取 gyan 预编译版（100 MB，仅想快速跑通用它）
+bun run build:sidecar                # 从 src-tauri\ffmpeg-sc 源码自编译最小 sidecar（6 MB，推荐）
 bun run icons                        # 生成 src-tauri/icons（图标方案变化时才需要）
 bun run tauri dev                    # 开发模式：Rust + WebView2 + Vite 热更新
 bun run tauri build                  # 产出 lumina.exe + ffmpeg sidecar
 ```
 
-`bun run fetch:ffmpeg` 在 `src-tauri\bin\ffmpeg-x86_64-pc-windows-msvc.exe` 已存在时
-会直接跳过，所以只需在换机器或升级 FFmpeg 时跑一次。该 exe 体积较大，**不入库**
-（`.gitignore` 已排除）。
+`bun run build:sidecar` 才是产出交付版 sidecar 的命令（需要 MSYS2 + MINGW64 工具链，
+见下）。`fetch:ffmpeg` 只是应急通道：它下载的 gyan 预编译版单个 exe 就有 100 MB。
+
+### 自编译 sidecar（tools/build-ffmpeg-sidecar.sh）
+
+需要 **MSYS2**（本机在 `D:\MSYS2`）及其 MINGW64 工具链：
+
+```bash
+pacman -S --needed make nasm pkgconf git \
+  mingw-w64-x86_64-gcc mingw-w64-x86_64-make \
+  mingw-w64-x86_64-pkgconf mingw-w64-x86_64-nasm
+```
+
+然后在 MINGW64 环境里构建（**必须是 MINGW64，ffmpeg 拒绝 MSYS 构建环境**）：
+
+```powershell
+$env:MSYSTEM='MINGW64'
+D:\MSYS2\usr\bin\bash.exe -lc "cd /d/Ai/lumina && bash tools/build-ffmpeg-sidecar.sh"
+```
+
+脚本只编真正需要的东西（eac3/ac3/aac 解码、matroska/mov/wav 解封装、pcm_s16le
+编码器、wav 复用器），其余全部关闭，产物约 6 MB。三个容易踩的坑已写进脚本注释：
+
+- `--pkg-config-flags=--static` 缺了会动态依赖 MSYS2 的 DLL，目标机器直接
+  `STATUS_DLL_NOT_FOUND`
+- ffmpeg 程序依赖 `avcodec avfilter avformat threads` + 一批固定 filter
+  （`aformat/anull/atrim/crop/format/hflip/null/rotate/transpose/trim/vflip`），
+  `--disable-everything` 之后必须显式 `--enable-filter=...`，否则 configure
+  **静默**丢掉 ffmpeg 程序，白编 200 个文件
+- 脚本自带三层自检：解码器在列表里、`ldd` 无缺失 DLL、真解一次 PCM
 
 ### 构建产物
 

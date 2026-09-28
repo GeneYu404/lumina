@@ -49,7 +49,7 @@ bun run typecheck    # TypeScript 全量类型检查
 桌面版开发：
 
 ```bash
-bun run fetch:ffmpeg   # 仅新机器：下载解码兜底用的 FFmpeg sidecar
+bun run build:sidecar  # 从源码编译最小 FFmpeg sidecar（6 MB，需 MSYS2）
 bun run tauri dev      # Tauri 窗口 + 热更新
 bun run tauri build    # 生成免安装目录
 ```
@@ -60,12 +60,12 @@ bun run tauri build    # 生成免安装目录
 bun run tauri build
 ```
 
-产物在 `src-tauri\target\release\`，两个文件一起分发：
+产物在 `src-tauri\target\release\`，一起分发即可：
 
 | 文件 | 体积 | 说明 |
 | --- | --- | --- |
-| `lumina.exe` | 约 6 MB | 主程序 |
-| `ffmpeg.exe` | 当前 100 MB（目标 5–15 MB）| 解码兜底，只在 WebView2 解不了的音轨（如 E-AC-3）时才启动 |
+| `lumina.exe` | 6.3 MB | 主程序 |
+| `ffmpeg.exe` | 6.2 MB | 解码兜底，只在 WebView2 解不了的音轨（如 E-AC-3）时才启动 |
 
 需要系统已装 WebView2（Win10 1803 以上 / Win11 默认自带）。不生成安装包。
 

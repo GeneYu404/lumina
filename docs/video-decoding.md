@@ -19,11 +19,13 @@ WebView 解不了的音轨——首个目标是 **E-AC-3（Dolby Digital Plus）
 | --- | --- | --- | --- |
 | 只用 WebView2 | 0 | 无 | E-AC-3 直接播不了，放弃 |
 | FFmpeg DLL + FFI 链接 | 与 exe 同量级 | 需 `unsafe` FFI + Windows import lib（MSYS2 的 MinGW 产物与 msvc ABI 不通，得走 vcpkg） | 成本高、无体积优势，否决 |
-| **FFmpeg exe sidecar** | 最小化构建 5–15 MB | `spawn` + 管道，零 unsafe | **采用** |
+| **FFmpeg exe sidecar** | 最小化构建 6.2 MB（实测）| `spawn` + 管道，零 unsafe | **采用** |
 
 关键认知：**体积由 configure 裁剪决定，与静态/动态无关**。gyan 的 release-essentials
-预编译版里单个 `ffmpeg.exe` 就有 100 MB（另含 ffplay/ffprobe 各 100 MB），必须换成
-`--disable-everything` 风格的自编译最小构建才适合随包分发。
+预编译版里单个 `ffmpeg.exe` 就有 100 MB（另含 ffplay/ffprobe 各 100 MB），必须自己
+`--disable-everything` 最小化编译才适合随包分发。实测自编译产物 **6.2 MB**，
+整个免安装目录 12.5 MB，许可证纯 LGPL 2.1+（比预编译版的 GPL 组件更干净）。
+构建脚本见 `tools/build-ffmpeg-sidecar.sh`，入口 `bun run build:sidecar`。
 
 ## 1. 现成能力：WebView2（Edge 内核）
 
@@ -75,10 +77,11 @@ WebView 解不了的音轨——首个目标是 **E-AC-3（Dolby Digital Plus）
 - `ffmpeg_probe` 命令对已登记路径做一次接缝检查，返回
   `{ available, hasEac3, pcmBytes, detail }`；读取上限 4 MB 后主动 kill，避免
   把探针变成整片解码。
-- 单元测试（`cargo test ffmpeg_sidecar`）用 sidecar 自己生成 1 秒正弦 wav 再解回
-  PCM，覆盖「定位 → spawn → 解码 → eac3 解码器存在」四件事。
-- **未完成**：把 PCM 接到前端（WebAudio/AudioWorklet）与视频画面的 A/V 同步；
-  以及把 100 MB 的预编译构建换成 5–15 MB 的自编译最小构建（需要 MSYS2 工具链）。
+- 单元测试（`cargo test ffmpeg_sidecar`）由 Rust 手写 1 秒正弦 WAV 当输入，解回 PCM
+  并校验 WAV 头里读出的采样率/声道，覆盖「定位 → spawn → 解码 → eac3 解码器存在」
+  四件事。这样 fixture 不依赖 lavfi/sine 滤镜，最小构建照样能跑测试。
+- **已完成体积目标**：100 MB 预编译版 → 6.2 MB 自编译最小构建（`bun run build:sidecar`）。
+- **未完成**：把 PCM 接到前端（WebAudio/AudioWorklet）与视频画面的 A/V 同步。
 
 ## 4. 上线前要测的指标
 
@@ -90,9 +93,6 @@ WebView 解不了的音轨——首个目标是 **E-AC-3（Dolby Digital Plus）
 
 ## 5. 待办
 
-- 把预编译 essentials（100 MB）换成自编译最小构建（5–15 MB）：需要 MSYS2 +
-  mingw 工具链，`--disable-everything` 后只开 `eac3` 解码、`matroska`/`mov` demux、
-  `s16le` muxer、`file`/`pipe` 协议。
 - 接通播放：Rust 侧流式输出 PCM → 前端 AudioWorklet 环形缓冲 → 与 `<video muted>`
   的 `currentTime` 对齐；WebCodecs 的 `AudioDecoder` 不支持 eac3，PCM 是唯一接缝。
 - 何时启用兜底：仅在 `media_info` 报出 WebView 解不了的音轨时 spawn sidecar，

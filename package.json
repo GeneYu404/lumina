@@ -11,7 +11,8 @@
     "tauri": "tauri",
     "icons": "node tools/make-icons.mjs",
     "fetch:ffmpeg": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/fetch-ffmpeg.ps1",
-    "fetch:ffmpeg:stage": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/fetch-ffmpeg.ps1 -Stage"
+    "fetch:ffmpeg:stage": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/fetch-ffmpeg.ps1 -Stage",
+    "build:sidecar": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-sidecar.ps1"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
