@@ -51,7 +51,10 @@ export function makeVideoThumb(
       }
     };
     video.muted = true;
-    video.preload = 'auto';
+    // Metadata + the explicit seek below is all a poster frame needs. `auto`
+    // would hint the engine to buffer far past the seek point of a 500 MB+
+    // file — bytes we never draw — while the 6 s timeout tears it down anyway.
+    video.preload = 'metadata';
     video.crossOrigin = 'anonymous';
     video.playsInline = true;
     video.onloadedmetadata = () => {

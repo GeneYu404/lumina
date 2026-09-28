@@ -6,6 +6,7 @@ import type {
   DialogKind,
   FileInput,
   FilterKind,
+  GalleryFilter,
   ImageItem,
   PanelKind,
   Point,
@@ -19,7 +20,7 @@ import { DEFAULT_ADJUST, loadImageEl, makeThumb, normRot, visualSize } from './u
 import { clamp, extOf } from './utils/format';
 import { guessMime, kindOf } from './utils/files';
 import { makeVideoThumb } from './utils/videoThumb';
-import { assetUrl, readBoot } from './desktop';
+import { assetUrl, readBoot, thumbBatch } from './desktop';
 
 export const ZOOM_MIN = 0.02;
 export const ZOOM_MAX = 64;
@@ -46,6 +47,9 @@ export const DEFAULT_SETTINGS: Settings = {
   thumbSize: 168,
   galleryCover: true,
   restoreSession: true,
+  videoVolume: 1,
+  videoMuted: false,
+  videoRate: 1,
 };
 
 function loadSettings(): Settings {
@@ -76,6 +80,9 @@ export interface Store {
   sortKey: SortKey;
   sortDir: SortDir;
   filter: FilterKind;
+  /** Gallery filter bar. Store-owned so entering the viewer (which unmounts
+   *  the gallery) and coming back restores the exact filtered list. */
+  galleryFilter: GalleryFilter;
   viewport: { w: number; h: number };
   view: ViewState;
   panel: PanelKind;
@@ -134,6 +141,7 @@ export interface Store {
   setBusy: (msg: string | null) => void;
   setSort: (key: SortKey, dir?: SortDir) => void;
   setFilter: (f: FilterKind) => void;
+  setGalleryFilter: (patch: Partial<GalleryFilter>) => void;
   setSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
   setWin: (patch: Partial<WinState>) => void;
   toast: (
@@ -230,9 +238,11 @@ export function createPathItem(
     origWidth: entry.width,
     origHeight: entry.height,
     // Never fall back to the original as a thumbnail: for a big GIF that means
-    // several <img> decoding and animating the same file. Rust fills it in.
+    // several <img> decoding and animating the same file. Rust fills it in —
+    // but only on demand (see `requestThumbs`): a 100k-photo folder must not
+    // queue 100k decodes just for being open.
     thumb,
-    thumbState: thumb ? 'done' : 'loading',
+    thumbState: thumb ? 'done' : 'idle',
   };
 }
 
@@ -368,6 +378,10 @@ const bootCurrent = bootImages[Math.min(readBoot()?.selected ?? 0, Math.max(0, b
 
 export const S = () => useStore.getState();
 
+/** Fresh filter bar — used at startup and whenever a new file set replaces
+ *  the old one (the folder path in the filter would no longer match). */
+const DEFAULT_GALLERY_FILTER: GalleryFilter = { query: '', kind: 'all', folder: '', time: 'all' };
+
 export const useStore = create<Store>()((set, get) => ({
   images: bootImages,
   currentId: bootCurrent ? bootCurrent.id : null,
@@ -375,6 +389,7 @@ export const useStore = create<Store>()((set, get) => ({
   sortKey: 'name',
   sortDir: 'asc',
   filter: 'all',
+  galleryFilter: { ...DEFAULT_GALLERY_FILTER },
   viewport: { w: 0, h: 0 },
   view: fitView(0),
   panel: null,
@@ -396,6 +411,8 @@ export const useStore = create<Store>()((set, get) => ({
       s.images.forEach(revokeItem);
       if (s.lastRemoved) revokeItem(s.lastRemoved.item);
       thumbQueue.length = 0;
+      // A replaced list orphans any still-streaming import batches.
+      streamGen++;
     }
     const base = opts.replace ? [] : s.images;
     const images = sortImages([...base, ...items], s.sortKey, s.sortDir);
@@ -406,6 +423,9 @@ export const useStore = create<Store>()((set, get) => ({
       images,
       currentId: first ? first.id : s.currentId,
       filter: 'all',
+      // A replaced file set points at a different folder — stale folder/time
+      // filters would show an empty gallery, so start clean.
+      galleryFilter: { ...DEFAULT_GALLERY_FILTER },
       mode: 'viewer',
       view: fitView(s.view.tick + 1),
       cropMode: false,
@@ -413,7 +433,10 @@ export const useStore = create<Store>()((set, get) => ({
       lastRemoved: opts.replace ? null : s.lastRemoved,
       win: { ...s.win, closed: false, min: false },
     });
-    enqueueThumbs(images.filter((i) => ids.has(i.id)).map((i) => i.id));
+    // Demand-driven thumbnails: the viewer's item now, the rest when its
+    // cell mounts — never an eager decode of the whole folder.
+    const cur = first ? first.id : s.currentId;
+    if (cur) requestThumbs([cur]);
   },
 
   mergeItems: (items) => {
@@ -506,7 +529,7 @@ export const useStore = create<Store>()((set, get) => ({
     const images = sortImages([...s.images, item], s.sortKey, s.sortDir);
     rebuildIndex(images);
     set({ images, currentId: item.id, lastRemoved: null, view: fitView(s.view.tick + 1) });
-    if (item.thumbState === 'idle') enqueueThumbs([item.id]);
+    requestThumbs([item.id]);
   },
 
   closeAll: () => {
@@ -515,6 +538,8 @@ export const useStore = create<Store>()((set, get) => ({
     if (s.lastRemoved) revokeItem(s.lastRemoved.item);
     thumbQueue.length = 0;
     idIndex.clear();
+    // Closing the list also cancels any still-streaming import batches.
+    streamGen++;
     set({
       images: [],
       currentId: null,
@@ -525,6 +550,7 @@ export const useStore = create<Store>()((set, get) => ({
       comparing: false,
       slideshow: false,
       filter: 'all',
+      galleryFilter: { ...DEFAULT_GALLERY_FILTER },
       view: fitView(s.view.tick + 1),
     });
   },
@@ -649,6 +675,9 @@ export const useStore = create<Store>()((set, get) => ({
     const s = get();
     if (id === s.currentId) return;
     set({ currentId: id, view: fitView(s.view.tick + 1), cropMode: false, comparing: false });
+    // The viewer background needs the new item's thumbnail even when no
+    // gallery cell or filmstrip chip for it is mounted.
+    requestThumbs([id]);
   },
 
   step: (d) => {
@@ -792,6 +821,7 @@ export const useStore = create<Store>()((set, get) => ({
         view: keep ? s.view : fitView(s.view.tick + 1),
       };
     }),
+  setGalleryFilter: (patch) => set((s) => ({ galleryFilter: { ...s.galleryFilter, ...patch } })),
   setSetting: (key, value) => set((s) => ({ settings: { ...s.settings, [key]: value } })),
   setWin: (patch) => set((s) => ({ win: { ...s.win, ...patch } })),
 
@@ -803,6 +833,113 @@ export const useStore = create<Store>()((set, get) => ({
   },
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }));
+
+/* ---------------------- streaming import bookkeeping ---------------------- */
+
+/** Bumped when the visible list is replaced/closed: streaming import batches
+ *  compare against it so an abandoned folder never reappears. */
+let streamGen = 0;
+export const getStreamGen = () => streamGen;
+
+/* ----------------------- demand-driven thumbnails ------------------------- */
+
+const THUMB_CHUNK = 32;
+/** Bumped whenever a fill loop starts, so stale loops stop. */
+let thumbGeneration = 0;
+let fillActive = false;
+
+/**
+ * Ask for thumbnails of exactly these items. Cells call this when they mount
+ * and the viewer for the current item — opening a folder with 100k files must
+ * never queue 100k decodes for files nobody is looking at.
+ */
+export function requestThumbs(ids: string[]) {
+  if (!ids.length) return;
+  const st = useStore.getState();
+  const pathIds: string[] = [];
+  const fileIds: string[] = [];
+  for (const id of ids) {
+    const item = st.images[indexOf(id)];
+    if (!item || item.thumb || item.thumbState !== 'idle' || item.error) continue;
+    if (item.file || item.remote) fileIds.push(id);
+    else if (item.path) pathIds.push(id);
+  }
+  if (fileIds.length) enqueueThumbs(fileIds);
+  if (!pathIds.length) return;
+  const patches = new Map<string, Partial<ImageItem>>(pathIds.map((id) => [id, { thumbState: 'loading' as const }]));
+  useStore.getState().patchMany(patches);
+  void fillThumbs();
+}
+
+/**
+ * Progressive thumbnails for path items: nearest to the current image first,
+ * one packed Rust batch per chunk, one store update per chunk. Nothing waits
+ * on it. Single-flight: a request while a loop runs only patches state — the
+ * live loop re-scans after every await, and the empty-scan exit path is fully
+ * synchronous, so a new item can never slip through the gap.
+ */
+async function fillThumbs() {
+  if (fillActive) return;
+  fillActive = true;
+  const gen = ++thumbGeneration;
+  try {
+    for (;;) {
+      if (gen !== thumbGeneration) return;
+      const s = useStore.getState();
+      const pending = s.images.filter((i) => !i.file && i.thumbState === 'loading' && i.path);
+      if (!pending.length) return;
+      // Distance order only matters when more is pending than one chunk can
+      // hold; the usual demand-driven case (a handful of visible cells) skips
+      // building a position map over the whole list.
+      if (pending.length > THUMB_CHUNK) {
+        const cur = Math.max(0, s.images.findIndex((i) => i.id === s.currentId));
+        const pos = new Map(s.images.map((i, k) => [i.id, k]));
+        pending.sort((a, b) => Math.abs((pos.get(a.id) ?? 0) - cur) - Math.abs((pos.get(b.id) ?? 0) - cur));
+      }
+      const chunk = pending.slice(0, THUMB_CHUNK);
+      const images = chunk.filter((i) => i.kind !== 'video');
+      const videos = chunk.filter((i) => i.kind === 'video');
+
+      // Images: one packed Rust batch (indices line up with `images`).
+      // Videos: the system decoder paints posters.
+      let imageThumbs: (string | null)[];
+      try {
+        imageThumbs = await thumbBatch(images.map((i) => i.path));
+      } catch {
+        imageThumbs = images.map(() => null);
+      }
+      const imageMap = new Map<string, string | null>();
+      images.forEach((im, k) => imageMap.set(im.id, imageThumbs[k] ?? null));
+
+      const videoThumbs = new Map<string, string | null>();
+      for (const v of videos) {
+        if (gen !== thumbGeneration) return;
+        videoThumbs.set(v.id, (await makeVideoThumb(v.url))?.thumb ?? null);
+      }
+      if (gen !== thumbGeneration) {
+        imageThumbs.forEach((t) => t && URL.revokeObjectURL(t));
+        videoThumbs.forEach((t) => t && URL.revokeObjectURL(t));
+        return;
+      }
+      const alive = new Set(useStore.getState().images.map((i) => i.id));
+      const patches = new Map<string, Partial<ImageItem>>();
+      chunk.forEach((item) => {
+        const t = item.kind === 'video' ? (videoThumbs.get(item.id) ?? null) : (imageMap.get(item.id) ?? null);
+        if (!alive.has(item.id)) {
+          if (t) URL.revokeObjectURL(t);
+          return;
+        }
+        // Images Rust cannot decode (SVG, AVIF…) fall back to the original;
+        // undecodable videos keep a placeholder instead.
+        const thumb = item.kind === 'video' ? t : (t ?? item.url);
+        patches.set(item.id, { thumb, thumbState: 'done' });
+      });
+      useStore.getState().patchMany(patches);
+    }
+  } finally {
+    fillActive = false;
+  }
+}
 
 /* ------------------------------------------------------------------ */
 /* Thumbnail queue                                                     */

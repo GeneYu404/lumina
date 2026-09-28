@@ -52,6 +52,17 @@ const GROUPS: { title: string; items: [string, string][] }[] = [
       ['T', '显示 / 隐藏胶片栏'],
     ],
   },
+  {
+    title: '视频播放',
+    items: [
+      ['Space / K', '播放 / 暂停'],
+      ['J / L', '后退 / 前进 10 秒'],
+      ['M', '静音'],
+      ['双击', '全屏（沉浸）'],
+      ['F / F11', '全屏'],
+      ['← / →', '上一个 / 下一个文件'],
+    ],
+  },
 ];
 
 export default function ShortcutsDialog() {

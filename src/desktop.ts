@@ -3,7 +3,8 @@
  * browser, so the same build runs on the web and inside the Windows app.
  *
  * Performance contract (desktop only):
- *   import      → one `import_paths` invoke for a whole batch of paths
+ *   import      → `collect_paths` (walk, cheap) + `describe_batch` probes in
+ *                 chunks: the first chunk shows at once, the tail streams in
  *   thumbnails  → Rust decodes/resizes in parallel, one packed `thumb_batch`
  *                 invoke per import; the WebView decodes the small JPEGs itself
  *   display     → asset protocol (`https://asset.localhost/...`) streams the
@@ -75,10 +76,21 @@ export async function closeDesktopWindow() {
 
 /* ------------------------------ files ------------------------------ */
 
-/** One invoke for a whole batch: registers paths and probes dimensions in Rust. */
-export async function importPaths(paths: string[]): Promise<DesktopEntry[]> {
+/** Expand folders/files into media paths — a walk, no header probes. */
+export async function collectPaths(inputs: string[]): Promise<string[]> {
+  if (!isDesktop || !inputs.length) return [];
+  return invoke<string[]>('collect_paths', { inputs });
+}
+
+/** Probe one bounded batch of paths into display entries (size, dimensions). */
+export async function describeBatch(paths: string[]): Promise<DesktopEntry[]> {
   if (!isDesktop || !paths.length) return [];
-  return invoke<DesktopEntry[]>('import_paths', { paths });
+  return invoke<DesktopEntry[]>('describe_batch', { paths });
+}
+
+/** Hand a file to the system's registered player (codec escape hatch). */
+export function openWithDefault(path: string): Promise<void> {
+  return invoke<void>('open_with_default', { path });
 }
 
 export interface DesktopBoot {
@@ -96,9 +108,9 @@ export function readBoot(): DesktopBoot | null {
 }
 
 /** The launched image's folder (it is already on screen; this is background work). */
-export async function launchSiblings(): Promise<{ entries: DesktopEntry[]; selected: number }> {
-  if (!isDesktop) return { entries: [], selected: 0 };
-  return invoke<{ entries: DesktopEntry[]; selected: number }>('launch_siblings');
+export async function launchSiblings(): Promise<{ entries: DesktopEntry[]; selected: number; rest: string[] }> {
+  if (!isDesktop) return { entries: [], selected: 0, rest: [] };
+  return invoke<{ entries: DesktopEntry[]; selected: number; rest: string[] }>('launch_siblings');
 }
 
 /** The window starts hidden; show it once the first frame is rendered. */

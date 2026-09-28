@@ -1,19 +1,20 @@
-import { createItem, createPathItem, createRemoteItem, getCurrent, getVisible, useStore } from './store';
+import { createItem, createPathItem, createRemoteItem, getCurrent, getVisible, getStreamGen, requestThumbs, useStore } from './store';
 import type { FileInput, ImageItem } from './types';
 import { ACCEPT, fromFileList, isMediaFile } from './utils/files';
 import { canvasToBlob, isAdjusted, normRot, renderItem } from './utils/image';
-import { makeVideoThumb } from './utils/videoThumb';
 import { REMOTE_SAMPLES, svgSamples } from './utils/samples';
-import { escapeHtml, extOf, formatBytes, stamp } from './utils/format';
+import { clamp, escapeHtml, extOf, formatBytes, stamp } from './utils/format';
+import { decodeSubtitleBuffer, toWebVtt } from './utils/subtitle';
 import {
-  importPaths,
+  collectPaths,
+  describeBatch,
   isDesktop,
   launchSiblings,
+  openWithDefault,
   pickFolder,
   pickImages,
   readBoot,
   setDesktopFullscreen,
-  thumbBatch,
   type DesktopEntry,
 } from './desktop';
 import { readSession } from './native';
@@ -33,63 +34,46 @@ function getPicker(): HTMLInputElement {
   return picker;
 }
 
-/** Bumped whenever the list is replaced, so stale thumbnail work stops. */
-let thumbGeneration = 0;
-const THUMB_CHUNK = 32;
+/* ------------------------- Streaming import ------------------------- */
+
+/** Paths described per IPC round trip. The first batch lands before anything
+ *  else — opening a huge folder must feel instant, the tail streams behind. */
+const IMPORT_BATCH = 1000;
 
 /**
- * Progressive thumbnails for path items: nearest to the current image first,
- * one packed Rust batch per chunk, one store update per chunk. Nothing waits on it.
+ * Probe `paths` in batches without ever yanking the viewer: batch one is
+ * adopted (replace or select), later batches merge in the background and
+ * stop as soon as the visible list is replaced (the store bumps its epoch).
+ * Returns how many paths are being loaded.
  */
-async function fillThumbs() {
-  const gen = ++thumbGeneration;
-  for (;;) {
-    if (gen !== thumbGeneration) return;
-    const s = st();
-    const pending = s.images.filter((i) => !i.file && i.thumbState === 'loading' && i.path);
-    if (!pending.length) return;
-    const cur = Math.max(0, s.images.findIndex((i) => i.id === s.currentId));
-    const pos = new Map(s.images.map((i, k) => [i.id, k]));
-    pending.sort((a, b) => Math.abs((pos.get(a.id) ?? 0) - cur) - Math.abs((pos.get(b.id) ?? 0) - cur));
-    const chunk = pending.slice(0, THUMB_CHUNK);
-    const images = chunk.filter((i) => i.kind !== 'video');
-    const videos = chunk.filter((i) => i.kind === 'video');
+async function importStream(
+  paths: string[],
+  opts: { replace?: boolean; selectedPath?: string | null } = {},
+): Promise<number> {
+  if (!paths.length) return 0;
+  const first = await describeBatch(paths.slice(0, IMPORT_BATCH));
+  if (!first.length) return 0;
+  const selected = opts.selectedPath ? Math.max(0, first.findIndex((e) => e.path === opts.selectedPath)) : 0;
+  await adoptEntries(first, { replace: opts.replace ?? true, selected });
+  const gen = getStreamGen();
+  if (paths.length > IMPORT_BATCH) void mergeBatches(paths.slice(IMPORT_BATCH), gen);
+  return paths.length;
+}
 
-    // Images: one packed Rust batch (indices line up with `images`).
-    // Videos: the system decoder paints posters.
-    let imageThumbs: (string | null)[];
+/** Background tail of a streaming import: probe + merge, never select. */
+async function mergeBatches(paths: string[], gen: number) {
+  for (let off = 0; off < paths.length; off += IMPORT_BATCH) {
+    if (gen !== getStreamGen()) return;
+    let batch: DesktopEntry[];
     try {
-      imageThumbs = await thumbBatch(images.map((i) => i.path));
+      batch = await describeBatch(paths.slice(off, off + IMPORT_BATCH));
     } catch {
-      imageThumbs = images.map(() => null);
+      continue; // one bad chunk must not abandon the remaining chunks
     }
-    const imageMap = new Map<string, string | null>();
-    images.forEach((im, k) => imageMap.set(im.id, imageThumbs[k] ?? null));
-
-    const videoThumbs = new Map<string, string | null>();
-    for (const v of videos) {
-      if (gen !== thumbGeneration) return;
-      videoThumbs.set(v.id, (await makeVideoThumb(v.url))?.thumb ?? null);
-    }
-    if (gen !== thumbGeneration) {
-      imageThumbs.forEach((t) => t && URL.revokeObjectURL(t));
-      videoThumbs.forEach((t) => t && URL.revokeObjectURL(t));
-      return;
-    }
-    const alive = new Set(st().images.map((i) => i.id));
-    const patches = new Map<string, Partial<ImageItem>>();
-    chunk.forEach((item) => {
-      const t = item.kind === 'video' ? (videoThumbs.get(item.id) ?? null) : (imageMap.get(item.id) ?? null);
-      if (!alive.has(item.id)) {
-        if (t) URL.revokeObjectURL(t);
-        return;
-      }
-      // Images Rust cannot decode (SVG, AVIF…) fall back to the original;
-      // undecodable videos keep a placeholder instead.
-      const thumb = item.kind === 'video' ? t : (t ?? item.url);
-      patches.set(item.id, { thumb, thumbState: 'done' });
-    });
-    st().patchMany(patches);
+    if (gen !== getStreamGen()) return;
+    const have = new Set(st().images.map((i) => i.path));
+    const items = batch.filter((e) => !have.has(e.path)).map((e) => createPathItem(e));
+    if (items.length) st().mergeItems(items);
   }
 }
 
@@ -108,22 +92,23 @@ async function adoptEntries(entries: DesktopEntry[], opts: { replace?: boolean; 
   const index = Math.min(Math.max(opts.selected ?? 0, 0), items.length - 1);
   st().addItems(items, { replace });
   if (items[index]) st().goTo(items[index].id);
-  void fillThumbs();
 }
 
-/** Desktop: paths in → Rust import → one packed thumbnail batch → store. */
+/** Desktop: paths in → Rust walk + batched probe → store. */
 export async function openPaths(paths: string[], opts: { replace?: boolean; folder?: boolean } = {}) {
   if (!isDesktop || !paths.length) return;
   const s = st();
   s.setBusy('正在读取文件…');
   try {
-    const entries = await importPaths(paths);
-    if (!entries.length) {
+    // Walk first (cheap even at 100k files), probe in batches: the first
+    // thousand entries show immediately, the tail merges in behind them.
+    const all = await collectPaths(paths);
+    if (!all.length) {
       s.toast('所选内容中没有支持的图片或视频', { kind: 'error' });
       return;
     }
-    await adoptEntries(entries, { replace: opts.replace ?? true });
-    s.toast(`已打开 ${entries.length} 个文件`, { kind: 'success' });
+    const total = await importStream(all, { replace: opts.replace ?? true });
+    if (total) s.toast(`已打开 ${total} 个文件`, { kind: 'success' });
   } catch {
     s.toast('无法读取所选路径', { kind: 'error' });
   } finally {
@@ -272,10 +257,12 @@ export async function openLaunchFiles() {
     const session = readSession();
     if (!session) return;
     try {
-      const entries = await importPaths(session.paths);
-      if (!entries.length) return;
-      const idx = Math.max(0, entries.findIndex((e) => e.path === session.current));
-      await adoptEntries(entries, { replace: true, selected: idx });
+      const paths = await collectPaths(session.paths);
+      if (!paths.length) return;
+      // Put the saved file first so batch one can restore the exact spot.
+      const at = session.current ? paths.indexOf(session.current) : -1;
+      if (at > 0) paths.unshift(paths.splice(at, 1)[0]);
+      await importStream(paths, { replace: true, selectedPath: session.current ?? null });
     } catch {
       /* record gone: fall back to the welcome screen */
     }
@@ -283,15 +270,92 @@ export async function openLaunchFiles() {
   }
   if (boot.siblings) {
     try {
-      const { entries } = await launchSiblings();
+      const { entries, rest } = await launchSiblings();
       const have = new Set(st().images.map((i) => i.path));
       // Never yank the user: merge without changing the current image or view.
-      st().mergeItems(entries.filter((e) => !have.has(e.path)).map((e) => createPathItem(e)));
+      const items = entries.filter((e) => !have.has(e.path)).map((e) => createPathItem(e));
+      if (items.length) st().mergeItems(items);
+      // The remainder of a huge folder streams in behind the first batch.
+      if (rest.length) void mergeBatches(rest, getStreamGen());
     } catch {
       /* the launched image still works on its own */
     }
   }
-  void fillThumbs();
+  const cur = st().currentId;
+  if (cur) requestThumbs([cur]);
+}
+
+/* ----------------------------- Playback ----------------------------- */
+
+/** The viewer mounts exactly one video element; global keys drive it too. */
+function videoEl(): HTMLVideoElement | null {
+  return document.getElementById('pv-video') as HTMLVideoElement | null;
+}
+
+export function toggleVideoPlay() {
+  const v = videoEl();
+  if (!v) return;
+  if (v.paused) void v.play();
+  else v.pause();
+}
+
+export function seekVideo(delta: number) {
+  const v = videoEl();
+  if (!v || !Number.isFinite(v.duration) || v.duration <= 0) return;
+  v.currentTime = clamp(v.currentTime + delta, 0, Math.max(0, v.duration - 0.05));
+}
+
+export function toggleVideoMute() {
+  const v = videoEl();
+  if (!v) return;
+  v.muted = !v.muted;
+  st().setSetting('videoMuted', v.muted);
+}
+
+/** Escape hatch for codecs WebView2 can't decode: hand the file to Windows. */
+export function openInSystemPlayer(path: string | undefined) {
+  if (!isDesktop || !path) return;
+  void openWithDefault(path).catch(() => st().toast('无法启动系统播放器', { kind: 'error' }));
+}
+
+/**
+ * Pick a subtitle file for the playing video (.srt / .vtt / .ass / .ssa) and
+ * return it as a WebVTT blob URL. Resolves null when the dialog is cancelled;
+ * a plain web input works both in the browser and inside Tauri.
+ */
+export function pickSubtitle(): Promise<{ name: string; url: string } | null> {
+  return new Promise((resolve) => {
+    const input = getPicker();
+    input.webkitdirectory = false;
+    input.multiple = false;
+    input.accept = '.srt,.vtt,.ass,.ssa';
+    input.value = '';
+    let done = false;
+    const finish = (value: { name: string; url: string } | null) => {
+      if (done) return;
+      done = true;
+      resolve(value);
+    };
+    input.onchange = () => {
+      const file = input.files?.[0];
+      input.value = '';
+      if (!file) return finish(null);
+      void file
+        .arrayBuffer()
+        .then((buf) => {
+          const vtt = toWebVtt(decodeSubtitleBuffer(buf));
+          finish({ name: file.name, url: URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' })) });
+        })
+        .catch(() => {
+          st().toast('无法读取字幕文件', { kind: 'error' });
+          finish(null);
+        });
+    };
+    // Chromium fires `cancel` when the dialog is dismissed without a file.
+    // Property assignment (like onchange) so successive picks don't stack up.
+    input.oncancel = () => finish(null);
+    input.click();
+  });
 }
 
 /* ----------------------------- Export ----------------------------- */

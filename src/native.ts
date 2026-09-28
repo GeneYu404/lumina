@@ -5,6 +5,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { isDesktop } from './desktop';
 import { useStore } from './store';
+import type { MediaInfo } from './types';
 
 export const WALLPAPER_STYLES = [
   { value: 'fill', label: '填充' },
@@ -70,6 +71,22 @@ export async function openDefaultApps() {
     await invoke('open_default_apps');
   } catch {
     /* ignore */
+  }
+}
+
+/* ------------------------------ media info ------------------------------ */
+
+/**
+ * Container header probe for the video info section (duration, codec, frame
+ * rate, audio layout). The HTML5 video API exposes none of that, so we read
+ * it from the file itself. Degrades to `null` in a plain browser.
+ */
+export async function readMediaInfo(path: string): Promise<MediaInfo | null> {
+  if (!isDesktop) return null;
+  try {
+    return await invoke<MediaInfo>('read_media_info', { path });
+  } catch {
+    return null;
   }
 }
 

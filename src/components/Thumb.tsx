@@ -1,5 +1,6 @@
 import { Film, ImageOff } from 'lucide-react';
-import type { CSSProperties } from 'react';
+import { useEffect, type CSSProperties } from 'react';
+import { requestThumbs } from '../store';
 import type { ImageItem } from '../types';
 import { cn } from '../utils/cn';
 import { blurNatural, cssFilter } from '../utils/image';
@@ -16,6 +17,11 @@ export default function Thumb({
   cover?: boolean;
   className?: string;
 }) {
+  // Demand-driven: a cell asks for its thumbnail only when it mounts, so a
+  // 100k-file folder decodes nothing beyond what the user actually scrolls to.
+  useEffect(() => {
+    if (!item.thumb && item.thumbState === 'idle' && !item.error) requestThumbs([item.id]);
+  }, [item.id, item.thumb, item.thumbState, item.error]);
   if (item.error) {
     return (
       <div className={cn('flex h-full w-full items-center justify-center bg-subtle text-fg3', className)}>

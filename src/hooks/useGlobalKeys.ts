@@ -6,9 +6,12 @@ import {
   openFolder,
 
   requestRemove,
+  seekVideo,
   startCrop,
   startSlideshow,
   toggleImmersive,
+  toggleVideoMute,
+  toggleVideoPlay,
 } from '../actions';
 import { getCurrent, isPannable, useStore } from '../store';
 
@@ -133,7 +136,9 @@ export function useGlobalKeys() {
       }
 
       if (!viewer && !['g', 'i', 't', '.'].includes(k)) return;
-      if (isVideo && !['f', 'm', 't', 'g', 'i', '.'].includes(k)) return;
+      // Video playback adds J/K/L (seek / toggle / seek) and M for mute —
+      // image-side L (rotate) and M (minimap) make no sense on a video.
+      if (isVideo && !['f', 'm', 't', 'g', 'i', '.', 'j', 'k', 'l'].includes(k)) return;
 
       switch (k) {
         case '+':
@@ -147,7 +152,12 @@ export function useGlobalKeys() {
           return run(() => s.actualSize());
         case 'r':
           return run(() => s.rotate(item.id, e.shiftKey ? -90 : 90));
+        case 'j':
+          return isVideo ? run(() => seekVideo(-10)) : undefined;
+        case 'k':
+          return isVideo ? run(() => toggleVideoPlay()) : undefined;
         case 'l':
+          if (isVideo) return run(() => seekVideo(10));
           return run(() => s.rotate(item.id, -90));
         case 'h':
           return run(() => s.flip(item.id, 'h'));
@@ -166,6 +176,7 @@ export function useGlobalKeys() {
         case 't':
           return run(() => s.setSetting('showFilmstrip', !s.settings.showFilmstrip));
         case 'm':
+          if (isVideo) return run(() => toggleVideoMute());
           return run(() => s.setSetting('showMinimap', !s.settings.showMinimap));
         case '.':
           return run(() => s.toggleFavorite(item.id));

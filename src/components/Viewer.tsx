@@ -30,7 +30,7 @@ import {
   type MouseEvent as RMouseEvent,
   type PointerEvent as RPointerEvent,
 } from 'react';
-import { copyFileName, copyImage, openInNewTab, requestRemove, startCrop } from '../actions';
+import { copyFileName, copyImage, openInNewTab, pickSubtitle, requestRemove, startCrop, toggleImmersive, toggleVideoPlay } from '../actions';
 import { readOrientationIfFile } from '../utils/orientation';
 import {
   computeFitScale,
@@ -44,8 +44,9 @@ import {
   ZOOM_MAX,
   ZOOM_MIN,
 } from '../store';
-import type { ImageItem, Point, ViewerBg } from '../types';
+import type { ImageItem, Point, SubtitleFile, ViewerBg } from '../types';
 import { isDesktop, readItemBytes } from '../desktop';
+import { readMediaInfo } from '../native';
 import { cn } from '../utils/cn';
 import { clamp, extOf, formatZoom } from '../utils/format';
 import { blurNatural, cssFilter, temperatureColor, vignetteGradient, visualSize } from '../utils/image';
@@ -53,8 +54,23 @@ import CropOverlay from './CropOverlay';
 import AnimatedImage, { animatedMime } from './AnimatedImage';
 import { Spinner } from './ui/Icons';
 import { Menu, type MenuEntry } from './ui/Menu';
+import VideoControls from './VideoControls';
 
 const S = useStore.getState;
+
+/** Same cap the Rust side keeps for one whole-file response: past this the
+ *  byte fallback would move the crash from Rust into the renderer instead of
+ *  removing it (a multi-GB video must never be copied into JS memory). */
+const MAX_BYTE_FALLBACK = 128 * 1024 * 1024;
+
+/**
+ * The one-shot byte fallback (asset URL out of scope) pulls the whole file
+ * into JS memory, so it is only safe for files we could afford to copy —
+ * an 8 GB video would trade a playback error for a crash.
+ */
+function canByteFallback(it: ImageItem) {
+  return !!it.path && it.size <= MAX_BYTE_FALLBACK;
+}
 
 export default function Viewer() {
   const item = useCurrent();
@@ -80,6 +96,55 @@ export default function Viewer() {
   const drag = useRef<{ sx: number; sy: number; lx: number; ly: number; pan: boolean } | null>(null);
   const pinch = useRef<{ d0: number; s0: number; m0: Point; o0: Point } | null>(null);
   const lastNav = useRef(0);
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [sub, setSub] = useState<SubtitleFile | null>(null);
+  const subRef = useRef<SubtitleFile | null>(null);
+  const [audioCodec, setAudioCodec] = useState<string | null>(null);
+
+  /* A subtitle never follows the user to the next file: drop the state and
+   *  revoke its blob whenever the item changes (or the viewer unmounts). */
+  useEffect(() => {
+    return () => {
+      if (subRef.current) {
+        URL.revokeObjectURL(subRef.current.url);
+        subRef.current = null;
+      }
+      setSub(null);
+    };
+  }, [item?.id]);
+
+  /* Container audio codec — the only way to know up front that playback will
+   *  be silent (AC-3/DTS are not in WebView2's decoder list; the element
+   *  itself never reports why). Null outside desktop or when unparseable. */
+  useEffect(() => {
+    setAudioCodec(null);
+    const path = item?.kind === 'video' ? item.path : '';
+    if (!isDesktop || !path) return;
+    let dead = false;
+    void readMediaInfo(path)
+      .then((m) => {
+        if (!dead) setAudioCodec(m?.audio?.codec ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      dead = true;
+    };
+  }, [item?.id, item?.kind, item?.path]);
+
+  /* `default` on <track> only applies at insert time — force it visible. */
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !sub) return;
+    const tt = v.textTracks?.[0];
+    if (tt) tt.mode = 'showing';
+  }, [sub]);
+
+  const applySub = (next: SubtitleFile | null) => {
+    if (subRef.current) URL.revokeObjectURL(subRef.current.url);
+    subRef.current = next;
+    setSub(next);
+  };
 
   /* viewport size */
   useEffect(() => {
@@ -146,7 +211,9 @@ export default function Viewer() {
     const list = getVisible(S());
     const i = list.findIndex((x) => x.id === item.id);
     [list[i + 1], list[i - 1]].forEach((n) => {
-      if (n && !n.error && n.id !== item.id) {
+      // A video URL must never reach `Image.src`: the browser would fetch it
+      // as one undecodable blob, and a multi-GB file that way is a crash.
+      if (n && !n.error && n.kind !== 'video' && n.id !== item.id) {
         const im = new Image();
         im.decoding = 'async';
         im.src = n.url;
@@ -402,28 +469,43 @@ export default function Viewer() {
       {item && !item.error && item.kind === 'video' && (
         <div key={`${item.id}|${item.url}`} className="absolute inset-0 flex items-center justify-center p-4">
           <video
+            ref={videoRef}
             id="pv-video"
             src={item.url}
-            controls
             playsInline
             preload="metadata"
             className="max-h-full max-w-full rounded-md shadow-2xl outline-none"
             style={{ opacity: loaded ? 1 : 0, transition: 'opacity .2s ease' }}
+            onClick={toggleVideoPlay}
+            onDoubleClick={() => toggleImmersive()}
             onLoadedMetadata={(e) => {
               const v = e.currentTarget;
+              // The element remounts per file: re-apply the persisted player
+              // preferences before anything can play (volumechange syncs the bar).
+              v.volume = settings.videoVolume ?? 1;
+              v.muted = settings.videoMuted ?? false;
+              v.playbackRate = settings.videoRate ?? 1;
+              const patch: Partial<ImageItem> = {};
               if (v.videoWidth && !item.width) {
-                S().setMeta(item.id, {
-                  width: v.videoWidth, height: v.videoHeight,
-                  origWidth: v.videoWidth, origHeight: v.videoHeight,
-                });
+                patch.width = v.videoWidth;
+                patch.height = v.videoHeight;
+                patch.origWidth = v.videoWidth;
+                patch.origHeight = v.videoHeight;
               }
+              // Duration feeds the info panel; live/partial streams report
+              // NaN or Infinity, so only store a real positive number.
+              if (item.duration == null && Number.isFinite(v.duration) && v.duration > 0) {
+                patch.duration = v.duration;
+              }
+              if (Object.keys(patch).length) S().setMeta(item.id, patch);
               setLoadedUrl(item.url);
             }}
             onLoadedData={() => setLoadedUrl(item.url)}
             onError={() => {
               // Same one-shot byte fallback as <img>: an asset-protocol hiccup
-              // must not kill playback.
-              if (isDesktop && item.path && item.url.startsWith('http')) {
+              // must not kill playback — but only while the file is small
+              // enough to copy (see `canByteFallback`).
+              if (isDesktop && item.path && item.url.startsWith('http') && canByteFallback(item)) {
                 void (async () => {
                   try {
                     const blob = await readItemBytes(item.path);
@@ -437,6 +519,22 @@ export default function Viewer() {
               }
               S().setMeta(item.id, { error: true });
             }}
+          >
+            {sub && <track kind="subtitles" srcLang="zh" label="字幕" src={sub.url} default />}
+          </video>
+          <VideoControls
+            videoRef={videoRef}
+            item={item}
+            total={total}
+            subtitle={sub}
+            audioCodec={audioCodec}
+            immersive={immersive}
+            onImportSubtitle={() => {
+              void pickSubtitle().then((s) => {
+                if (s) applySub(s);
+              });
+            }}
+            onClearSubtitle={() => applySub(null)}
           />
         </div>
       )}
@@ -477,7 +575,7 @@ export default function Viewer() {
             onError={() => {
               // Asset-protocol URL can be out of scope (rare): fall back to one
               // allow-listed byte fetch instead of failing the image.
-              if (isDesktop && item.path && item.url.startsWith('http')) {
+              if (isDesktop && item.path && item.url.startsWith('http') && canByteFallback(item)) {
                 void (async () => {
                   try {
                     const blob = await readItemBytes(item.path);
@@ -507,6 +605,27 @@ export default function Viewer() {
       )}
 
       {item?.error && <ErrorState item={item} />}
+
+      {/* Back to the gallery. Filters live in the store, so the list behind
+          this button is exactly what the user filtered before opening the
+          item. Hidden in immersive/crop where the chrome owns the screen. */}
+      {item && !immersive && !cropMode && (
+        <button
+          data-no-pan
+          type="button"
+          aria-label="返回图库"
+          title="返回图库"
+          onClick={() => S().setMode('gallery')}
+          onDoubleClick={(e) => e.stopPropagation()}
+          className={cn(
+            'absolute left-3 top-3 z-20 flex h-8 items-center gap-1 rounded-md border border-stroke px-2.5 text-[13px] text-fg shadow-flyout transition-colors hover:bg-card-hover focus-visible:opacity-100',
+            // Over an animation a backdrop blur is re-computed every frame: go solid.
+            animated ? 'bg-card' : 'bg-acrylic backdrop-blur-xl',
+          )}
+        >
+          <ChevronLeft size={15} strokeWidth={1.8} /> 返回
+        </button>
+      )}
 
       {total > 1 && !cropMode && (
         <>

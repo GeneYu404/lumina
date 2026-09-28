@@ -1,24 +1,30 @@
 import {
+  Activity,
   Aperture,
   Calendar,
   Camera,
   Clock,
   FileImage,
+  Film,
   Folder,
+  Gauge,
   HardDrive,
   Heart,
   MapPin,
   Palette,
   Ruler,
   User,
+  Video,
+  Volume2,
   X,
   type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
+import { readMediaInfo } from '../native';
 import { useCurrent, useStore } from '../store';
-import type { ImageItem } from '../types';
+import type { AudioStreamInfo, ImageItem, MediaInfo } from '../types';
 import { cn } from '../utils/cn';
-import { aspectLabel, formatBytes, formatDate, formatExposure, typeLabel } from '../utils/format';
+import { aspectLabel, extOf, formatBitrate, formatBytes, formatDate, formatDuration, formatExposure, formatFps, typeLabel } from '../utils/format';
 import { computeStats, isAdjusted, normRot, type ImageStats } from '../utils/image';
 
 const S = useStore.getState;
@@ -67,6 +73,51 @@ function useExif(item: ImageItem | null): { data: ExifData | null; loading: bool
     };
   }, [id, file]);
   return { data, loading };
+}
+
+/// Container headers for the open video: duration, codecs, frame rate. The
+/// HTML5 video API exposes none of that, so the Rust side reads the file's
+/// own headers — quietly resolving to null in a plain browser or on
+/// containers we don't parse (the <video> element's duration still fills in).
+function useMediaInfo(item: ImageItem | null): { info: MediaInfo | null; loading: boolean } {
+  const [info, setInfo] = useState<MediaInfo | null>(null);
+  const [loading, setLoading] = useState(false);
+  const id = item?.id;
+  const path = item?.path ?? '';
+  const isVideo = item?.kind === 'video';
+  useEffect(() => {
+    setInfo(null);
+    if (!isVideo || !path) return;
+    let cancelled = false;
+    setLoading(true);
+    readMediaInfo(path)
+      .then((m) => {
+        if (!cancelled) setInfo(m);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, path, isVideo]);
+  return { info, loading };
+}
+
+const CHANNELS: Record<number, string> = {
+  1: '单声道',
+  2: '立体声',
+  4: '四声道',
+  6: '5.1 环绕',
+  8: '7.1 环绕',
+};
+
+function audioLabel(a: AudioStreamInfo): string {
+  const parts: string[] = [];
+  if (a.codec) parts.push(a.codec);
+  if (a.sampleRate && a.sampleRate > 0) parts.push(`${Math.round(a.sampleRate / 100) / 10} kHz`);
+  if (a.channels && a.channels > 0) parts.push(CHANNELS[a.channels] ?? `${a.channels} 声道`);
+  return parts.join(' · ');
 }
 
 function useStats(url: string | null, remote: boolean): ImageStats | null {
@@ -153,6 +204,7 @@ function str(v: unknown): string {
 export default function InfoPanel() {
   const item = useCurrent();
   const { data: exif, loading } = useExif(item);
+  const { info: media, loading: mediaLoading } = useMediaInfo(item);
   const isVideo = !!item && item.kind === 'video';
   const stats = useStats(isVideo ? null : (item?.thumb ?? null), !!item?.remote);
   const [copied, setCopied] = useState<string | null>(null);
@@ -174,6 +226,26 @@ export default function InfoPanel() {
   const lon = typeof exif?.longitude === 'number' ? (exif.longitude as number) : null;
   const params = [fnum, exposure, iso, focal, ev].filter(Boolean);
   const hasCamera = !!(camera || lens || params.length || shot);
+
+  // Video detail: container headers first, the <video> element's duration as
+  // fallback (it works even for containers we don't parse, once played).
+  const durationSec =
+    media && media.durationMs && media.durationMs > 0
+      ? media.durationMs / 1000
+      : item.duration && item.duration > 0
+        ? item.duration
+        : 0;
+  const container = media?.container ?? extOf(item.name).toUpperCase();
+  const vcodec = media?.video?.codec ?? '';
+  const vres =
+    !item.width && media?.video?.width && media?.video?.height
+      ? `${media.video.width} × ${media.video.height} 像素`
+      : '';
+  const fps = media?.video?.fps && media.video.fps > 0 ? media.video.fps : null;
+  const acodec = media?.audio ? audioLabel(media.audio) : '';
+  // Average bitrate over the whole file — approximate for VBR, honest enough
+  // for a "how big is this stream" glance.
+  const bitrate = durationSec > 0 && item.size > 0 ? (item.size * 8) / durationSec : 0;
 
   const edits: string[] = [];
   if (item.cropped) edits.push('已裁剪');
@@ -247,6 +319,41 @@ export default function InfoPanel() {
             </Row>
           )}
         </Section>
+
+        {isVideo && (
+        <Section title="视频" right={mediaLoading ? <span className="text-[11px] text-fg3">读取中…</span> : undefined}>
+          <Row icon={Clock} label="时长">
+            {formatDuration(durationSec)}
+          </Row>
+          <Row icon={Film} label="容器">
+            {container || '—'}
+          </Row>
+          {vcodec && (
+            <Row icon={Video} label="视频编码">
+              {vcodec}
+              {vres && <span className="text-fg2"> · {vres}</span>}
+            </Row>
+          )}
+          {fps !== null && (
+            <Row icon={Gauge} label="帧率">
+              {formatFps(fps)}
+            </Row>
+          )}
+          {bitrate > 0 && (
+            <Row icon={Activity} label="码率">
+              {formatBitrate(bitrate)}
+            </Row>
+          )}
+          {acodec && (
+            <Row icon={Volume2} label="音频">
+              {acodec}
+            </Row>
+          )}
+          {!media && !mediaLoading && !durationSec && (
+            <p className="py-1 text-xs leading-5 text-fg3">暂无详情：播放一次视频即可读取时长。</p>
+          )}
+        </Section>
+        )}
 
         {!isVideo && (
         <Section title="相机" right={loading ? <span className="text-[11px] text-fg3">读取中…</span> : undefined}>

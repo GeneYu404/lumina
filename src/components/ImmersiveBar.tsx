@@ -61,13 +61,16 @@ export default function ImmersiveBar() {
       >
         {item?.name} · {index + 1} / {total}
       </div>
-      <div
-        className={cn(
-          'absolute bottom-5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 rounded-xl border border-white/10 bg-black/60 p-1 text-white shadow-2xl backdrop-blur-xl transition-all duration-300',
-          visible ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-3 opacity-0',
-        )}
-        onDoubleClick={(e) => e.stopPropagation()}
-      >
+      {/* Videos carry their own bottom bar (VideoControls); zoom/rotate are
+          meaningless there and the two bars would stack on top of each other. */}
+      {item?.kind !== 'video' && (
+        <div
+          className={cn(
+            'absolute bottom-5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 rounded-xl border border-white/10 bg-black/60 p-1 text-white shadow-2xl backdrop-blur-xl transition-all duration-300',
+            visible ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-3 opacity-0',
+          )}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
         <DarkBtn icon={ChevronLeft} label="上一张" onClick={() => S().step(-1)} />
         <div className="mx-1 h-5 w-px bg-white/15" />
         <DarkBtn icon={Minus} label="缩小" onClick={() => S().zoomStep(-1)} />
@@ -81,7 +84,8 @@ export default function ImmersiveBar() {
         <DarkBtn icon={ChevronRight} label="下一张" onClick={() => S().step(1)} />
         <div className="mx-1 h-5 w-px bg-white/15" />
         <DarkBtn icon={Minimize} label="退出全屏 (Esc)" onClick={exitImmersive} />
-      </div>
+        </div>
+      )}
     </>
   );
 }

@@ -7,7 +7,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { copyFileName, copyImage, openInNewTab, requestRemove } from '../actions';
 import { isDesktop } from '../desktop';
 import { useStore, useVisibleImages } from '../store';
-import type { ImageItem, Point } from '../types';
+import type { GalleryFilter, GalleryKind, GalleryTime, ImageItem, Point } from '../types';
 
 import { cn } from '../utils/cn';
 import { extOf } from '../utils/format';
@@ -17,10 +17,7 @@ import Thumb from './Thumb';
 const S = useStore.getState;
 const PAGE = 60;
 
-type KindFilter = 'all' | 'image' | 'video';
-type TimeFilter = 'all' | 'today' | 'week' | 'month';
-
-const TIME_LABEL: Record<TimeFilter, string> = { all: '全部时间', today: '今天', week: '最近 7 天', month: '最近 30 天' };
+const TIME_LABEL: Record<GalleryTime, string> = { all: '全部时间', today: '今天', week: '最近 7 天', month: '最近 30 天' };
 
 const Cell = memo(function Cell({
   item, active, size, cover, onMenu,
@@ -75,11 +72,10 @@ export default function Gallery() {
   const cover = useStore((s) => s.settings.galleryCover);
   const ref = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState<{ id: string; p: Point } | null>(null);
-  const [query, setQuery] = useState('');
-  const [kind, setKind] = useState<KindFilter>('all');
-  const [folder, setFolder] = useState('');
-  const [time, setTime] = useState<TimeFilter>('all');
-  const [page, setPage] = useState(0);
+  // Filters live in the store: the gallery unmounts while an item is open in
+  // the viewer, so component state would lose the user's filtering on return.
+  const galleryFilter = useStore((s) => s.galleryFilter);
+  const { query, kind, folder, time } = galleryFilter;
 
   useEffect(() => {
     const el = ref.current;
@@ -117,12 +113,25 @@ export default function Gallery() {
     });
   }, [all, query, kind, folder, time]);
 
-  useEffect(() => setPage(0), [query, kind, folder, time, results.length]);
+  // Page is local (a transient view choice) but lands on the page holding the
+  // current item — returning from the viewer resumes where the user left off
+  // instead of jumping to page one.
+  const [page, setPage] = useState(() => {
+    const idx = currentId ? results.findIndex((i) => i.id === currentId) : -1;
+    return idx >= 0 ? Math.floor(idx / PAGE) : 0;
+  });
+  const setFilter = (patch: Partial<GalleryFilter>) => {
+    setPage(0); // a new filter starts back at the first page
+    S().setGalleryFilter(patch);
+  };
 
   const imageCount = results.filter((i) => i.kind !== 'video').length;
   const videoCount = results.length - imageCount;
   const last = Math.max(0, Math.ceil(results.length / PAGE) - 1);
-  const visible = results.slice(page * PAGE, page * PAGE + PAGE);
+  // Items can disappear while away (deletes, replaced folders): clamp instead
+  // of leaving an empty page on screen.
+  const shownPage = Math.min(page, last);
+  const visible = results.slice(shownPage * PAGE, shownPage * PAGE + PAGE);
 
   const onMenu = useCallback((id: string, p: Point) => setMenu({ id, p }), []);
   const closeMenu = useCallback(() => setMenu(null), []);
@@ -182,35 +191,38 @@ export default function Gallery() {
           <Search size={15} className="shrink-0 text-fg3" />
           <input
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => setFilter({ query: e.target.value })}
             placeholder="搜索文件名、扩展名或路径…"
             className="h-full min-w-0 flex-1 bg-transparent text-[13px] text-fg outline-none placeholder:text-fg3"
           />
           {query && (
-            <button type="button" aria-label="清除搜索" className="rounded p-0.5 text-fg3 hover:bg-subtle" onClick={() => setQuery('')}>
+            <button type="button" aria-label="清除搜索" className="rounded p-0.5 text-fg3 hover:bg-subtle" onClick={() => setFilter({ query: '' })}>
               <X size={13} />
             </button>
           )}
         </div>
-        <SegmentedLike value={kind} onChange={setKind} />
+        <SegmentedLike value={kind} onChange={(v) => setFilter({ kind: v })} />
         <select
           aria-label="文件夹范围"
           value={folder}
-          onChange={(e) => setFolder(e.target.value)}
+          onChange={(e) => setFilter({ folder: e.target.value })}
           className="h-8 max-w-[220px] rounded-[5px] border border-stroke bg-card px-2 text-[13px] text-fg outline-none"
         >
           <option value="">全部文件夹</option>
           {folders.map((f) => (
             <option key={f} value={f}>{f}</option>
           ))}
+          {/* Keep a persisted folder selectable even when the current item set
+              no longer contains it, so the select doesn't render blank. */}
+          {folder && !folders.includes(folder) && <option value={folder}>{folder}</option>}
         </select>
         <select
           aria-label="时间范围"
           value={time}
-          onChange={(e) => setTime(e.target.value as TimeFilter)}
+          onChange={(e) => setFilter({ time: e.target.value as GalleryTime })}
           className="h-8 rounded-[5px] border border-stroke bg-card px-2 text-[13px] text-fg outline-none"
         >
-          {(Object.keys(TIME_LABEL) as TimeFilter[]).map((t) => (
+          {(Object.keys(TIME_LABEL) as GalleryTime[]).map((t) => (
             <option key={t} value={t}>{TIME_LABEL[t]}</option>
           ))}
         </select>
@@ -221,6 +233,15 @@ export default function Gallery() {
           <Search size={40} strokeWidth={1.2} />
           <div className="text-base font-medium text-fg">没有匹配的文件</div>
           <div className="text-xs">换个关键词，或放宽文件夹 / 时间筛选。</div>
+          {(query || kind !== 'all' || folder || time !== 'all') && (
+            <button
+              type="button"
+              onClick={() => setFilter({ query: '', kind: 'all', folder: '', time: 'all' })}
+              className="mt-1 rounded-md border border-stroke bg-card px-3 py-1.5 text-[13px] text-fg hover:bg-card-hover"
+            >
+              清除全部筛选
+            </button>
+          )}
         </div>
       ) : (
         sections.map((sec) => (
@@ -242,11 +263,11 @@ export default function Gallery() {
 
       {last > 0 && (
         <div className="flex items-center justify-center gap-3 pb-2 text-xs text-fg2">
-          <button type="button" disabled={page <= 0} onClick={() => setPage(page - 1)} className="rounded-md border border-stroke bg-card px-3 py-1 hover:bg-card-hover disabled:opacity-40">
+          <button type="button" disabled={shownPage <= 0} onClick={() => setPage(shownPage - 1)} className="rounded-md border border-stroke bg-card px-3 py-1 hover:bg-card-hover disabled:opacity-40">
             上一页
           </button>
-          <span className="tabular-nums">{page + 1} / {last + 1}</span>
-          <button type="button" disabled={page >= last} onClick={() => setPage(page + 1)} className="rounded-md border border-stroke bg-card px-3 py-1 hover:bg-card-hover disabled:opacity-40">
+          <span className="tabular-nums">{shownPage + 1} / {last + 1}</span>
+          <button type="button" disabled={shownPage >= last} onClick={() => setPage(shownPage + 1)} className="rounded-md border border-stroke bg-card px-3 py-1 hover:bg-card-hover disabled:opacity-40">
             下一页
           </button>
         </div>
@@ -256,8 +277,8 @@ export default function Gallery() {
   );
 }
 
-function SegmentedLike({ value, onChange }: { value: KindFilter; onChange: (v: KindFilter) => void }) {
-  const opts: { value: KindFilter; label: string }[] = [
+function SegmentedLike({ value, onChange }: { value: GalleryKind; onChange: (v: GalleryKind) => void }) {
+  const opts: { value: GalleryKind; label: string }[] = [
     { value: 'all', label: '全部' },
     { value: 'image', label: '仅图片' },
     { value: 'video', label: '仅视频' },

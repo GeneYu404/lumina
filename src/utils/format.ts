@@ -70,6 +70,33 @@ export function formatZoom(scale: number): string {
   return `${p >= 10 ? Math.round(p) : p.toFixed(1)}%`;
 }
 
+/** 1:02:03 / 4:32 — media-style duration for the video info rows. */
+export function formatDuration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '—';
+  const total = Math.round(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+/** Frame rate. NTSC rates (23.976/29.97/…) must not round up to integers. */
+export function formatFps(fps: number): string {
+  if (!Number.isFinite(fps) || fps <= 0) return '—';
+  const ntsc = [23.976, 29.97, 59.94, 119.88].find((t) => Math.abs(fps - t) < 0.02);
+  if (ntsc) return `${ntsc} fps`;
+  return `${Math.round(fps * 100) / 100} fps`;
+}
+
+/** 8.42 Mbps / 960 kbps — average stream bitrate. */
+export function formatBitrate(bitsPerSecond: number): string {
+  if (!Number.isFinite(bitsPerSecond) || bitsPerSecond <= 0) return '—';
+  return bitsPerSecond >= 1_000_000
+    ? `${(bitsPerSecond / 1_000_000).toFixed(2)} Mbps`
+    : `${Math.round(bitsPerSecond / 1000)} kbps`;
+}
+
 export function typeLabel(type: string, name: string): string {
   const ext = extOf(name).toUpperCase();
   const map: Record<string, string> = {
@@ -91,11 +118,15 @@ export function typeLabel(type: string, name: string): string {
     JXL: 'JPEG XL 图像',
   };
   const video: Record<string, string> = {
-    MP4: 'MP4 视频 (H.264)',
+    // Codec is no longer guessed here — the 视频 section reads it from headers.
+    MP4: 'MP4 视频',
     M4V: 'M4V 视频',
     MOV: 'QuickTime 视频',
     WEBM: 'WebM 视频',
     MKV: 'Matroska 视频',
+    AVI: 'AVI 视频',
+    WMV: 'WMV 视频',
+    FLV: 'FLV 视频',
   };
   if (video[ext]) return `${video[ext]} (.${ext.toLowerCase()})`;
   if (map[ext]) return `${map[ext]} (.${ext.toLowerCase()})`;

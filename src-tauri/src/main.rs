@@ -52,6 +52,8 @@ fn read_orientation(path: &Path) -> u16 {
     1
 }
 
+mod asset;
+mod media_info;
 mod register;
 
 /// Image-only list (the file picker / associations use `MEDIA_EXTS`).
@@ -72,7 +74,12 @@ const MEDIA_EXTS: &[&str] = &[
 const DECODABLE: &[&str] = &[
     "jpg", "jpeg", "jfif", "png", "gif", "webp", "bmp", "ico", "tif", "tiff",
 ];
-const MAX_FILES: usize = 2000;
+/// Safety cap on one directory walk. The import streams in batches past any
+/// practical folder size; this only stops a pathological tree.
+const MAX_FILES: usize = 100_000;
+/// Paths described per IPC round trip — the frontend shows the first batch
+/// immediately and merges the rest in the background.
+const IMPORT_BATCH: usize = 1000;
 const MAX_DEPTH: usize = 12;
 const MAX_PIXELS: u64 = 80_000_000;
 
@@ -96,6 +103,9 @@ struct Entry {
 struct LaunchSet {
     entries: Vec<Entry>,
     selected: usize,
+    /// Paths beyond the first batch: the frontend describes these in
+    /// background chunks so launch never waits on a giant folder.
+    rest: Vec<String>,
 }
 
 type Shared = Arc<Registry>;
@@ -225,6 +235,17 @@ fn assoc_set(ext: String, enabled: bool) -> Result<(), String> {
 fn reveal_in_folder(path: String) -> Result<(), String> {
     std::process::Command::new("explorer")
         .args(["/select,", &path])
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// Hand a file to the shell's registered player — the escape hatch for
+/// codecs WebView2 can't decode (AC-3/DTS audio in MKV, and friends).
+#[tauri::command]
+fn open_with_default(path: String) -> Result<(), String> {
+    std::process::Command::new("explorer")
+        .arg(&path)
         .spawn()
         .map(|_| ())
         .map_err(|e| e.to_string())
@@ -360,7 +381,7 @@ fn collect_dir(root: &Path, out: &mut Vec<PathBuf>, depth: usize) {
 }
 
 /// Expand files and folders into a bounded, de-duplicated image list.
-fn collect_paths(inputs: &[PathBuf]) -> Vec<PathBuf> {
+fn expand_paths(inputs: &[PathBuf]) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = Vec::new();
     for p in inputs {
         if p.is_dir() {
@@ -448,7 +469,11 @@ fn cache_dir() -> PathBuf {
 }
 
 fn cache_file(path: &Path, size: u64, modified: f64, width: u32) -> PathBuf {
+    // Version the key: thumbnails produced by an older rule (e.g. before the
+    // EXIF rotation was baked in) must never be served again.
+    const THUMB_CACHE_VERSION: u32 = 2;
     let mut h = std::collections::hash_map::DefaultHasher::new();
+    THUMB_CACHE_VERSION.hash(&mut h);
     path.hash(&mut h);
     size.hash(&mut h);
     modified.to_bits().hash(&mut h);
@@ -470,9 +495,19 @@ fn make_thumb(path: &Path, size: u64, modified: f64, target: u32) -> Result<(u8,
         }
     }
 
-    let img = image::open(path).map_err(|_| ())?;
+    let mut img = image::open(path).map_err(|_| ())?;
     if (img.width() as u64) * (img.height() as u64) > MAX_PIXELS {
         return Err(());
+    }
+    // The decoder hands back physical pixels, while phone photos keep their
+    // rotation in the EXIF Orientation tag — a vertical shot decodes sideways.
+    // Rotate before resizing, otherwise every portrait thumbnail lies. (The
+    // full-size view is fine: WebView2 applies Orientation on its own.)
+    if let Some(o) = u8::try_from(read_orientation(path))
+        .ok()
+        .and_then(image::metadata::Orientation::from_exif)
+    {
+        img.apply_orientation(o);
     }
     let resized = img.resize(target, target, image::imageops::FilterType::Triangle);
     let mut payload: Vec<u8> = Vec::with_capacity(64 * 1024);
@@ -517,44 +552,81 @@ fn allowed(reg: &Registry, p: &Path) -> bool {
 
 /// Background step after a direct open: the rest of the launched image's
 /// folder. The launched image itself is already on screen (injected at
-/// window creation), so nothing waits on this.
+/// window creation), so nothing waits on this — and only one batch around
+/// the target gets probed here; the remainder streams in via `describe_batch`.
 #[tauri::command]
 async fn launch_siblings(reg: State<'_, Shared>, launch: State<'_, Arc<Launch>>) -> Result<LaunchSet, String> {
     let reg = reg.inner().clone();
     let launch = launch.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         if launch.targets.len() != 1 {
-            return LaunchSet { entries: Vec::new(), selected: 0 };
+            return LaunchSet {
+                entries: Vec::new(),
+                selected: 0,
+                rest: Vec::new(),
+            };
         }
         let target = launch.targets[0].clone();
         let paths = siblings_of(&target);
-        // Header-only probes, in parallel (collect keeps order).
-        let mut entries: Vec<Entry> = paths.par_iter().filter_map(|p| describe(p)).collect();
+        remember(&paths, &reg);
+
+        // Front batch centered on the target so its neighbours are what the
+        // viewer shows first; everything else is handed over as raw paths.
+        let pos = paths.iter().position(|p| p.as_path() == target).unwrap_or(0);
+        let start = pos
+            .saturating_sub(IMPORT_BATCH / 2)
+            .min(paths.len().saturating_sub(IMPORT_BATCH));
+        let end = (start + IMPORT_BATCH).min(paths.len());
+        // Header-only probes, in parallel (the batch slice keeps order).
+        let mut entries: Vec<Entry> = paths[start..end].par_iter().filter_map(|p| describe(p)).collect();
         sort_entries(&mut entries);
         let wanted = target.to_string_lossy();
         let selected = entries.iter().position(|e| e.path == wanted).unwrap_or(0);
-        remember(&paths, &reg);
-        LaunchSet { entries, selected }
+        let rest = paths
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i < start || *i >= end)
+            .map(|(_, p)| p.to_string_lossy().into_owned())
+            .collect();
+        LaunchSet {
+            entries,
+            selected,
+            rest,
+        }
     })
     .await
     .map_err(|e| e.to_string())
 }
 
-/// Register files/folders, probe their dimensions in parallel.
+/// Expand folders/files into media paths. Listing is cheap even at 100k
+/// files — header probes happen later, one `describe_batch` at a time.
 #[tauri::command]
-async fn import_paths(paths: Vec<String>, reg: State<'_, Shared>) -> Result<Vec<Entry>, String> {
+async fn collect_paths(inputs: Vec<String>) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let inputs: Vec<PathBuf> = inputs.iter().map(PathBuf::from).collect();
+        expand_paths(&inputs)
+            .iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect()
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Register and probe one bounded batch of paths in parallel. The frontend
+/// keeps batches at IMPORT_BATCH so huge folders stay responsive.
+#[tauri::command]
+async fn describe_batch(paths: Vec<String>, reg: State<'_, Shared>) -> Result<Vec<Entry>, String> {
     let reg = reg.inner().clone();
-    let out = tauri::async_runtime::spawn_blocking(move || {
-        let inputs: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
-        let paths = collect_paths(&inputs);
+    tauri::async_runtime::spawn_blocking(move || {
+        let paths: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
+        remember(&paths, &reg);
         let mut entries: Vec<Entry> = paths.par_iter().filter_map(|p| describe(p)).collect();
         sort_entries(&mut entries);
-        remember(&paths, &reg);
         entries
     })
     .await
-    .map_err(|e| e.to_string())?;
-    Ok(out)
+    .map_err(|e| e.to_string())
 }
 
 /// Packed thumbnail batch — one IPC call per import, never one per file.
@@ -616,7 +688,34 @@ async fn read_image(path: String, reg: State<'_, Shared>) -> Result<Response, St
         if !allowed(&reg, &p) {
             return Err("path not allowed".to_string());
         }
-        std::fs::read(&p).map(Response::new).map_err(|e| e.to_string())
+        // Copying the file is what an edit needs; copying a video the size of
+        // a movie is what takes the process down. One shared ceiling keeps a
+        // bad caller from turning into an OOM.
+        const MAX_BYTES: u64 = 128 * 1024 * 1024;
+        match std::fs::metadata(&p) {
+            Ok(m) if m.len() > MAX_BYTES => Err("file too large".to_string()),
+            _ => std::fs::read(&p).map(Response::new).map_err(|e| e.to_string()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Container headers for the video info panel: duration, codec, frame rate,
+/// audio layout. Headers only — no decoding, so a 500 GB file costs the same
+/// handful of seeks as a 5 MB one and no demuxer crate joins the binary.
+#[tauri::command]
+async fn read_media_info(
+    path: String,
+    reg: State<'_, Shared>,
+) -> Result<media_info::MediaInfo, String> {
+    let reg = reg.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let p = PathBuf::from(&path);
+        if !allowed(&reg, &p) {
+            return Err("path not allowed".to_string());
+        }
+        media_info::read(&p)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -702,6 +801,8 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // Our own `asset` handler (bounded responses): see `asset.rs`.
+        .register_uri_scheme_protocol("asset", asset::handler::<tauri::Wry>)
         .manage(registry)
         .manage(Arc::new(Launch { targets }))
         .setup(move |app| {
@@ -727,14 +828,17 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             launch_siblings,
-            import_paths,
+            collect_paths,
+            describe_batch,
             thumb_batch,
             read_image,
+            read_media_info,
             shell_menu,
             shell_menu_state,
             assoc_state,
             assoc_set,
             open_default_apps,
+            open_with_default,
             reveal_in_folder,
             set_wallpaper
         ])

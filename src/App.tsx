@@ -4,8 +4,8 @@ import PrintDialog from './components/dialogs/PrintDialog';
 import WallpaperDialog from './components/dialogs/WallpaperDialog';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { importFiles, openLaunchFiles, openPaths, renamePasted } from './actions';
-import { isDesktop, onDesktopPaths, setDesktopTheme, showDesktopWindow } from './desktop';
-import { clearSession, saveSession } from './native';
+import { isDesktop, onDesktopPaths, readBoot, setDesktopTheme, showDesktopWindow } from './desktop';
+import { clearSession, readSession, saveSession } from './native';
 import { S as getState } from './store';
 import CommandBar from './components/CommandBar';
 import { CloseAllDialog, ConfirmRemoveDialog } from './components/dialogs/ConfirmDialogs';
@@ -18,6 +18,7 @@ import Gallery from './components/Gallery';
 import ImmersiveBar from './components/ImmersiveBar';
 import InfoPanel from './components/InfoPanel';
 import Slideshow from './components/Slideshow';
+import Splash from './components/Splash';
 import StatusBar from './components/StatusBar';
 import Toasts from './components/Toasts';
 import Viewer from './components/Viewer';
@@ -69,7 +70,6 @@ function useDesktopShell() {
     // The first render (with the launched image, if any) is committed:
     // reveal the window now — no white flash, no welcome-screen flash.
     void showDesktopWindow();
-    void openLaunchFiles();
 
     // Remember what is open so the next launch restores it (settings toggle).
     let timer = 0;
@@ -196,6 +196,16 @@ function CollageDialogWrapper() {
   return <CollageDialog onClose={() => getState().setDialog(null)} />;
 }
 
+/**
+ * Restoring the last session reads the whole folder (metadata + header probe)
+ * before a single image appears — over a large folder that gap is long enough
+ * to read as "slow startup". A launched file is already on screen, so it never
+ * needs the cover.
+ */
+function restoreNeedsSplash() {
+  return isDesktop && !readBoot() && getState().settings.restoreSession && !!readSession();
+}
+
 function DropOverlay() {
   return (
     <div className="animate-fade-in pointer-events-none absolute inset-2 z-50 flex items-center justify-center rounded-xl border-2 border-dashed border-accent bg-accent-soft backdrop-blur-[2px]">
@@ -210,10 +220,27 @@ function DropOverlay() {
 
 export default function App() {
   const [dragging, setDragging] = useState(false);
+  const [booting, setBooting] = useState(restoreNeedsSplash);
   useThemeSync();
   useGlobalKeys();
   useDesktopShell();
   useDropAndPaste(setDragging);
+
+  // Restore happens off-screen; the splash covers the gap so a big folder
+  // reads as "starting up" instead of "stuck on an empty window". Keep it up
+  // for a beat even when the restore is instant — no flicker.
+  useEffect(() => {
+    if (!isDesktop) return;
+    const t0 = performance.now();
+    void openLaunchFiles()
+      .catch(() => {
+        /* a failed restore falls back to the welcome screen */
+      })
+      .finally(() => {
+        const wait = Math.max(0, 450 - (performance.now() - t0));
+        window.setTimeout(() => setBooting(false), wait);
+      });
+  }, []);
 
   const hasImages = useStore((s) => s.images.length > 0);
   const mode = useStore((s) => s.mode);
@@ -251,6 +278,7 @@ export default function App() {
         {immersive && showViewer && <ImmersiveBar />}
         <Toasts />
         {dragging && <DropOverlay />}
+        <Splash visible={booting} />
       </WindowFrame>
 
       {slideshow && hasImages && <Slideshow />}

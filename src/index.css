@@ -273,3 +273,23 @@ input:focus-visible {
   height: 100%;
   display: block;
 }
+
+/* ---------- Video subtitles ---------- */
+video::cue {
+  background: rgb(0 0 0 / 0.72);
+  font-size: 0.95em;
+  line-height: 1.35;
+}
+
+/* Volume slider on the dark player bar: appearance:none hides the native
+   thumb, so draw our own (white, matching the bar's controls). */
+.pv-vol::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.5);
+  cursor: pointer;
+}
