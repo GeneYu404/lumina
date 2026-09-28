@@ -5,14 +5,22 @@
 
 | | Tauri（本项目） | Electron |
 | --- | --- | --- |
-| 安装包体积 | 约 **6 MB** 单文件（便携版）| 约 80–120 MB |
+| 交付形态 | 免安装目录（`lumina.exe` + FFmpeg sidecar）| 安装包 80–120 MB |
+| 体积 | 主程序约 **6 MB**；随包 FFmpeg 正在从 100 MB 精简到 5–15 MB | 80–120 MB |
 | 空闲内存 | 低（共享系统 WebView2）| 高（自带 Chromium + Node） |
 | 界面效果 | 与网页版一致 | 与网页版一致 |
 | 系统能力 | 文件关联、右键菜单、壁纸、会话恢复 | 同 |
 
-## 便携版（单文件 exe）
+## 便携版（免安装目录）
 
-只有一个产物：`src-tauri\target\release\lumina.exe`，约 6 MB。
+产物是 `src-tauri\target\release\` 下的两个文件：
+
+| 文件 | 体积 | 说明 |
+| --- | --- | --- |
+| `lumina.exe` | 约 6 MB | 主程序 |
+| `ffmpeg.exe` | 当前 100 MB（目标 5–15 MB）| 解码兜底 sidecar，只在 WebView2 解不了的音轨（如 E-AC-3）时才会被 spawn |
+
+两个文件必须放在一起：`src-tauri\src\ffmpeg_sidecar.rs` 按「可执行文件同级」定位它。
 需要系统已装 WebView2（Win10 1803+ / Win11 默认自带）。
 
 命令行参数：
@@ -60,19 +68,36 @@ lumina.exe --help                         # 全部选项
 
 ```bash
 bun install                          # 安装依赖（首次约 4s；增量 1s 内）
+bun run fetch:ffmpeg                 # 下载 FFmpeg sidecar 到 src-tauri\bin（跳过则从仓库取）
 bun run icons                        # 生成 src-tauri/icons（图标方案变化时才需要）
 bun run tauri dev                    # 开发模式：Rust + WebView2 + Vite 热更新
-bun run tauri build                  # 产出 src-tauri\target\release\lumina.exe
+bun run tauri build                  # 产出 lumina.exe + ffmpeg sidecar
 ```
+
+`bun run fetch:ffmpeg` 在 `src-tauri\bin\ffmpeg-x86_64-pc-windows-msvc.exe` 已存在时
+会直接跳过，所以只需在换机器或升级 FFmpeg 时跑一次。该 exe 体积较大，**不入库**
+（`.gitignore` 已排除）。
 
 ### 构建产物
 
 ```
 src-tauri\target\release\
-  lumina.exe                          ← 唯一交付物
+  lumina.exe                          ← 主程序（约 6 MB）
+  ffmpeg.exe                          ← 解码兜底 sidecar（当前 100 MB，目标 5–15 MB）
+  LICENSE.ffmpeg.txt                  ← 随包许可证（见 src-tauri\bin\）
 ```
 
-（NSIS 安装包不再生成——单文件 exe 已经是便携版。）
+这两个文件一起分发即可，无需安装程序（NSIS 安装包不再生成）。
+
+### 验证 sidecar 接缝
+
+```bash
+cd src-tauri
+cargo test ffmpeg_sidecar            # 3 个测试：定位 / eac3 解码器 / 解码出 PCM
+```
+
+测试会用 sidecar 自己生成 1 秒正弦 wav 再解回 PCM，覆盖「定位 → spawn → 解码」全链路。
+可用 `$env:LUMINA_FFMPEG` 指定别的 ffmpeg 路径。
 
 ### Vite 在 Windows 上的 watch 限制
 

@@ -7,7 +7,8 @@
 拾光 Lumina — Windows 11 风格的图片与视频查看器，单仓库双形态：
 
 - **网页版**：纯前端 React，跑在浏览器里
-- **桌面版**：Tauri 2 + WebView2，单文件 `.exe`（约 6 MB，便携，免安装）
+- **桌面版**：Tauri 2 + WebView2，免安装目录（`lumina.exe` 约 6 MB + `ffmpeg.exe`
+  解码兜底 sidecar），不生成安装包
 
 技术栈：React 19 · Vite 8 · TypeScript 7 · Tauri 2 · Rust · Zustand · Tailwind 4 · Bun 1.4。
 
@@ -129,9 +130,16 @@ git ls-files -s src-tauri/target
 
 ```bash
 bun install                   # 增量应该 < 1s
+bun run fetch:ffmpeg          # 仅新机器/换构建时；已存在会跳过
 bun run typecheck             # TS 7 通过
 bun run build                 # vite build 几百毫秒
-bun run tauri build           # 单 exe，2 分钟左右（首次全量）
+bun run tauri build           # lumina.exe + ffmpeg sidecar，2 分钟左右
+```
+
+动了 `src-tauri/src/ffmpeg_sidecar.rs` 或 sidecar 本身，额外跑一次接缝测试：
+
+```bash
+cd src-tauri && cargo test ffmpeg_sidecar    # 定位 / eac3 解码器 / 解码出 PCM
 ```
 
 不要省掉 `bun run typecheck` —— TypeScript 7 比 5 严格得多，新代码里写错 `tsconfig.json` 兼容项会立刻挂。

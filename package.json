@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "tauri": "tauri",
-    "icons": "node tools/make-icons.mjs"
+    "icons": "node tools/make-icons.mjs",
+    "fetch:ffmpeg": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/fetch-ffmpeg.ps1",
+    "fetch:ffmpeg:stage": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/fetch-ffmpeg.ps1 -Stage"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",

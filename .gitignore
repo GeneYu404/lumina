@@ -17,6 +17,12 @@ target/
 src-tauri/target/
 src-tauri/gen/
 
+# FFmpeg sidecar：大二进制不入库，由 tools/fetch-ffmpeg.ps1 或手工放置
+# （LICENSE.ffmpeg.txt 很小，保留入库作为许可说明）
+src-tauri/bin/ffmpeg-*.exe
+src-tauri/ffmpeg/
+src-tauri/ffmpeg-sc/
+
 # Editor
 .vscode/*
 !.vscode/extensions.json

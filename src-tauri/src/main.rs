@@ -53,6 +53,7 @@ fn read_orientation(path: &Path) -> u16 {
 }
 
 mod asset;
+mod ffmpeg_sidecar;
 mod media_info;
 mod register;
 
@@ -721,6 +722,27 @@ async fn read_media_info(
     .map_err(|e| e.to_string())?
 }
 
+/// Seam check for the bundled FFmpeg sidecar: decode the first audio stream of
+/// an allowed file to s16le PCM and report how many bytes came out. Playback
+/// (PCM → WebAudio, A/V sync) is the next step; this proves the whole
+/// locate → spawn → decode path works on the user's machine.
+#[tauri::command]
+async fn ffmpeg_probe(
+    path: String,
+    reg: State<'_, Shared>,
+) -> Result<ffmpeg_sidecar::Probe, String> {
+    let reg = reg.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let p = PathBuf::from(&path);
+        if !allowed(&reg, &p) {
+            return Err("path not allowed".to_string());
+        }
+        ffmpeg_sidecar::probe(&p)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// What Windows asked us to open, kept for `launch_siblings`.
 struct Launch {
     targets: Vec<PathBuf>,
@@ -833,6 +855,7 @@ fn main() {
             thumb_batch,
             read_image,
             read_media_info,
+            ffmpeg_probe,
             shell_menu,
             shell_menu_state,
             assoc_state,

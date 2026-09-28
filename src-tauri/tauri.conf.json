@@ -36,6 +36,7 @@
   "bundle": {
     "active": true,
     "targets": [],
+    "externalBin": ["bin/ffmpeg"],
     "publisher": "Lumina",
     "shortDescription": "拾光 · 图片与视频查看器",
     "longDescription": "Windows 11 风格的图片与视频查看器：缩放、平移、旋转、裁剪、调色、视频播放、幻灯片放映与 EXIF 信息。",
