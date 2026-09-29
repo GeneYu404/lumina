@@ -191,6 +191,5 @@ Tauri 2 + Vite 8 在 Windows 上首次构建时，Vite 的递归 watcher 会尝�
 - exe 未签名，首次运行 SmartScreen 可能提示"未知发布者"，选择"仍要运行"即可。
 - 打印"导出 PDF"复用系统打印对话框中的「Microsoft Print to PDF」，没有内置 PDF 引擎。
 - Rust 代码未在非 Windows 上验证；注册表与壁纸接口是 Windows 专用。
-- 项目已从 npm 切换到 Bun；旧 `package-lock.json` 可删除（`bun install` 走 `bun.lock`）。
 
-更多视频相关的技术决策见 [docs/video-decoding.md](docs/video-decoding.md)。
+更多视频相关的技术决策见 [video-decoding.md](video-decoding.md)。

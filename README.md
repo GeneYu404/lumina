@@ -37,7 +37,7 @@
 
 ## 快速开始（开发）
 
-用 **Bun**（项目默认运行时，详见 [WINDOWS.md](WINDOWS.md#开发环境)）：
+用 **Bun**（项目默认运行时，详见 [docs/build-windows.md](docs/build-windows.md#开发环境)）：
 
 ```bash
 bun install
@@ -101,14 +101,18 @@ src-tauri/           Rust 桌面外壳
   src/main.rs        文件扫描、缩略图批处理、注册表、壁纸、EXIF 读取
   tauri.conf.json    窗口与权限配置
 
-tools/               工具脚本（图标生成）
-docs/                视频解码等专项文档
+tools/               工具脚本（图标生成、FFmpeg 获取与编译）
+docs/                工程文档（构建、解码选型、mbx 缓存）
 ```
 
 ## 文档
 
-- [WINDOWS.md](WINDOWS.md) — Windows 桌面版开发、便携版与系统集成说明
-- [docs/video-decoding.md](docs/video-decoding.md) — 视频解码技术选型
+- [docs/](docs/README.md) — 文档总目录
+  - [project.md](docs/project.md) — 项目概述与已知边界
+  - [build-windows.md](docs/build-windows.md) — Windows 构建、便携版、sidecar
+  - [video-decoding.md](docs/video-decoding.md) — 视频解码技术选型
+  - [mbx-target.md](docs/mbx-target.md) — target 缓存 symlink
+- [AGENTS.md](AGENTS.md) — AI agent / 协作者的工作守则
 
 ## 快捷键
 
