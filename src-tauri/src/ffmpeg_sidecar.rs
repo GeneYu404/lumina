@@ -1,20 +1,26 @@
 //! Bundled FFmpeg sidecar — the seam for codecs the WebView cannot decode.
 //!
-//! The `<video>` path in WebView2 covers H.264/AAC/VP9/AV1 through Media
-//! Foundation, but Dolby Digital Plus (E-AC-3) has no decoder there. Instead
-//! of linking libavcodec (MSVC import-libs, unsafe FFI, ABI pain) we ship a
-//! small ffmpeg build and drive it as a **separate process**: licensing stays
-//! isolated, the Rust side stays spawn + pipe, and the binary can later be
-//! swapped for a minimal source build without touching any code here.
+//! WebView2 covers H.264/AAC/VP9/AV1 (and, depending on the machine, HEVC and
+//! Dolby Digital — see the capability probe in the About dialog) through Media
+//! Foundation. What it cannot do on *some* machines is play an E-AC-3 track.
+//! Instead of linking libavcodec (MSVC import-libs, unsafe FFI, ABI pain) we
+//! ship a small ffmpeg build and drive it as a **separate process**: licensing
+//! stays isolated, the Rust side stays spawn + pipe, and the binary can be
+//! swapped for a different build without touching any code here.
 //!
-//! This round proves the seam end to end: locate → spawn → s16le PCM out of
-//! the first audio stream. Feeding that PCM to WebAudio (and A/V sync) is the
-//! next round's work.
+//! Two entry points:
+//! - [`probe`] — one-shot check, used by the info panel.
+//! - [`stream`] — decode from a timestamp and push PCM to the webview over an
+//!   IPC channel, which the frontend feeds into WebAudio.
 
+use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
 use serde::Serialize;
+use tauri::ipc::{Channel, InvokeResponseBody};
 
 /// Tauri externalBin naming: `<name>-<target-triple><ext>`. The bundler copies
 /// the sidecar next to the executable under its plain name (`ffmpeg.exe`), while
@@ -26,6 +32,11 @@ pub const SIDECAR_ALT: &str = "ffmpeg.exe";
 /// prove the decoder works, small enough that a long file cannot turn the
 /// check into a full decode.
 const PROBE_PCM_CAP: usize = 4 * 1024 * 1024;
+
+/// PCM forwarded per channel message: 64 KB = 16 K stereo frames ≈ 0.17 s at
+/// 48 kHz. Big enough to keep the message rate sane, small enough that a seek
+/// does not leave a long tail of stale audio in the ring buffer.
+const STREAM_CHUNK: usize = 64 * 1024;
 
 /// Where the bundled binary lives, in order:
 /// 1. `$LUMINA_FFMPEG` — explicit override (tests, unusual layouts),
@@ -139,6 +150,9 @@ struct WavInfo {
     sample_rate: u32,
     channels: u16,
     pcm_bytes: usize,
+    /// Offset of the first PCM byte — the header is stripped before the
+    /// samples reach WebAudio.
+    data_at: usize,
 }
 
 /// Walk RIFF chunks instead of assuming a 44-byte header: ffmpeg may prepend a
@@ -161,7 +175,11 @@ fn parse_wav(buf: &[u8]) -> Option<WavInfo> {
             if rate == 0 || channels == 0 {
                 return None;
             }
-            return Some(WavInfo { sample_rate: rate, channels, pcm_bytes: buf.len() - body });
+            return Some(WavInfo { sample_rate: rate, channels, pcm_bytes: buf.len() - body, data_at: body });
+        }
+        // A pipe may cut a chunk in half; wait for the rest before skipping.
+        if body + size > buf.len() {
+            return None;
         }
         pos = body + size + (size & 1); // chunks are word-aligned
     }
@@ -184,6 +202,146 @@ pub fn has_eac3_decoder() -> bool {
             Err(_) => false,
         }
     })
+}
+
+/* ------------------------------------------------------------------ */
+/* Streaming playback                                                  */
+/* ------------------------------------------------------------------ */
+
+/// What the frontend needs to build an `AudioContext` and size its ring buffer.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StreamInfo {
+    pub id: u32,
+    pub sample_rate: u32,
+    pub channels: u16,
+    /// Offset in the media this stream starts at, seconds.
+    pub start: f64,
+}
+
+/// A running ffmpeg decode, killable from the UI (seek, stop, next image).
+struct Session {
+    child: Mutex<Option<Child>>,
+}
+
+static SESSIONS: LazyLock<Mutex<HashMap<u32, Arc<Session>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static NEXT_ID: AtomicU32 = AtomicU32::new(1);
+
+/// Kill a stream and forget it. Safe to call with a stale id.
+pub fn stop(id: u32) {
+    let session = SESSIONS.lock().ok().and_then(|mut m| m.remove(&id));
+    if let Some(s) = session {
+        if let Ok(mut c) = s.child.lock() {
+            if let Some(child) = c.as_mut() {
+                let _ = child.kill();
+            }
+            *c = None;
+        }
+    }
+}
+
+fn kill_quietly(session: &Arc<Session>) {
+    if let Ok(mut c) = session.child.lock() {
+        if let Some(child) = c.as_mut() {
+            let _ = child.kill();
+        }
+        *c = None;
+    }
+    if let Ok(mut m) = SESSIONS.lock() {
+        m.retain(|_, v| !Arc::ptr_eq(v, session));
+    }
+}
+
+/// Decode the first audio stream from `start` seconds and push interleaved
+/// s16le PCM over `on_pcm` until the media ends, the channel closes, or
+/// [`stop`] is called with the returned id.
+///
+/// Blocking, and meant to run on a worker thread: it only returns once the WAV
+/// header has arrived (so the caller learns rate/layout) or the pipe died.
+pub fn stream(media: &Path, start: f64, on_pcm: Channel<InvokeResponseBody>) -> Result<StreamInfo, String> {
+    let ff = sidecar_path();
+    if !ff.exists() {
+        return Err(format!("sidecar missing: {}", ff.display()));
+    }
+    let input = media.to_string_lossy().into_owned();
+    let start = if start.is_finite() && start > 0.0 { start } else { 0.0 };
+    // `-ss` before `-i` seeks by demuxing, which is what audio wants: fast and
+    // sample-accurate enough that a scrub does not visibly jump.
+    let mut cmd = Command::new(&ff);
+    cmd.args(["-v", "error", "-nostdin"]);
+    if start > 0.0 {
+        cmd.args(["-ss", &format!("{start:.3}")]);
+    }
+    cmd.args(["-i", &input, "-map", "0:a:0", "-c:a", "pcm_s16le", "-f", "wav", "-"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = cmd.spawn().map_err(|e| format!("spawn ffmpeg: {e}"))?;
+    let mut stdout = child.stdout.take().ok_or_else(|| "no stdout pipe".to_string())?;
+    let mut stderr = child.stderr.take();
+
+    // Read until the header is complete so the caller can size its buffers.
+    let mut head: Vec<u8> = Vec::with_capacity(64 * 1024);
+    let mut probe = [0u8; 8 * 1024];
+    let mut info = loop {
+        let n = stdout.read(&mut probe).map_err(|e| format!("read header: {e}"))?;
+        if n == 0 {
+            let mut err = String::new();
+            if let Some(e) = stderr.as_mut() {
+                let _ = e.read_to_string(&mut err);
+            }
+            let _ = child.kill();
+            return Err(if err.trim().is_empty() {
+                "没有可解码的音轨".to_string()
+            } else {
+                err.trim().to_string()
+            });
+        }
+        head.extend_from_slice(&probe[..n]);
+        if let Some(w) = parse_wav(&head) {
+            break w;
+        }
+        if head.len() > 1024 * 1024 {
+            let _ = child.kill();
+            return Err("WAV 头过大，ffmpeg 输出异常".to_string());
+        }
+    };
+
+    // Everything up to `data_at` is header; the rest is PCM.
+    let leftover = head.split_off(info.data_at);
+    info.pcm_bytes = leftover.len();
+
+    let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+    let session = Arc::new(Session { child: Mutex::new(Some(child)) });
+    if let Ok(mut m) = SESSIONS.lock() {
+        m.insert(id, Arc::clone(&session));
+    }
+
+    let reader_session = Arc::clone(&session);
+    std::thread::spawn(move || {
+        let send = |bytes: &[u8]| on_pcm.send(InvokeResponseBody::from(bytes.to_vec())).is_ok();
+        if !leftover.is_empty() && !send(&leftover) {
+            kill_quietly(&reader_session);
+            return;
+        }
+        let mut buf = vec![0u8; STREAM_CHUNK];
+        loop {
+            match stdout.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    if !send(&buf[..n]) {
+                        break; // frontend went away (seek / next image)
+                    }
+                }
+            }
+        }
+        // An empty message is the end-of-stream marker.
+        let _ = on_pcm.send(InvokeResponseBody::from(Vec::new()));
+        kill_quietly(&reader_session);
+    });
+
+    Ok(StreamInfo { id, sample_rate: info.sample_rate, channels: info.channels, start })
 }
 
 #[cfg(test)]
@@ -250,5 +408,61 @@ mod tests {
         // 1 s @ 48 kHz stereo s16 = 192 000 bytes; the read is capped, so accept
         // anything close to that rather than an exact match.
         assert!(probe.pcm_bytes >= 96_000, "PCM 太少: {} 字节", probe.pcm_bytes);
+    }
+
+    #[test]
+    fn wav_header_survives_extra_chunks() {
+        // ffmpeg may emit LIST/INFO before `data`, and on a pipe the data size
+        // is 0xFFFFFFFF. The player must still find `fmt ` and `data`.
+        let mut buf: Vec<u8> = Vec::new();
+        buf.extend_from_slice(b"RIFF");
+        buf.extend_from_slice(&0xFFFF_FFFFu32.to_le_bytes());
+        buf.extend_from_slice(b"WAVE");
+        buf.extend_from_slice(b"LIST");
+        buf.extend_from_slice(&12u32.to_le_bytes()); // INFO + ISFT + 4-byte value
+        buf.extend_from_slice(b"INFOISFT\x00\x00\x00\x00");
+        buf.extend_from_slice(b"fmt ");
+        buf.extend_from_slice(&16u32.to_le_bytes());
+        buf.extend_from_slice(&1u16.to_le_bytes());
+        buf.extend_from_slice(&6u16.to_le_bytes()); // 5.1
+        buf.extend_from_slice(&48_000u32.to_le_bytes());
+        buf.extend_from_slice(&0u32.to_le_bytes());
+        buf.extend_from_slice(&(6u16 * 2).to_le_bytes());
+        buf.extend_from_slice(&16u16.to_le_bytes());
+        buf.extend_from_slice(b"data");
+        buf.extend_from_slice(&0xFFFF_FFFFu32.to_le_bytes());
+        let pcm_at = buf.len();
+        buf.extend_from_slice(&[0u8; 64]);
+
+        let w = parse_wav(&buf).expect("header with a LIST chunk must parse");
+        assert_eq!(w.sample_rate, 48_000);
+        assert_eq!(w.channels, 6);
+        assert_eq!(w.data_at, pcm_at);
+        assert_eq!(w.pcm_bytes, 64);
+    }
+
+    #[test]
+    fn wav_header_waits_for_a_truncated_chunk() {
+        // A pipe can split a chunk header; parsing must not claim success on a
+        // half-read `data` size, or the player would eat PCM as header.
+        let mut buf: Vec<u8> = Vec::new();
+        buf.extend_from_slice(b"RIFF");
+        buf.extend_from_slice(&100u32.to_le_bytes());
+        buf.extend_from_slice(b"WAVEfmt ");
+        buf.extend_from_slice(&16u32.to_le_bytes());
+        buf.extend_from_slice(&1u16.to_le_bytes());
+        buf.extend_from_slice(&2u16.to_le_bytes());
+        buf.extend_from_slice(&44_100u32.to_le_bytes());
+        buf.extend_from_slice(&0u32.to_le_bytes());
+        buf.extend_from_slice(&4u16.to_le_bytes());
+        buf.extend_from_slice(&16u16.to_le_bytes());
+        buf.extend_from_slice(b"data");
+        buf.extend_from_slice(&[0xFF, 0xFF, 0xFF]); // size not fully read yet
+        assert!(parse_wav(&buf).is_none(), "半截 data 头不应被当成完整头");
+    }
+
+    #[test]
+    fn stopping_an_unknown_stream_is_harmless() {
+        stop(u32::MAX);
     }
 }

@@ -30,6 +30,8 @@ import {
   type MouseEvent as RMouseEvent,
   type PointerEvent as RPointerEvent,
 } from 'react';
+import { canPlayAudio, codecLabel } from '../utils/codecs';
+import { PcmPlayer } from '../utils/pcmPlayer';
 import { copyFileName, copyImage, openInNewTab, pickSubtitle, requestRemove, startCrop, toggleImmersive, toggleVideoPlay } from '../actions';
 import { readOrientationIfFile } from '../utils/orientation';
 import {
@@ -131,6 +133,81 @@ export default function Viewer() {
       dead = true;
     };
   }, [item?.id, item?.kind, item?.path]);
+
+  /* Adaptive audio: when this WebView2 cannot decode the track, the element
+   *  would play silent, so we mute it and feed the sidecar's PCM into
+   *  WebAudio instead. Machines that *can* decode it never spawn anything. */
+  const needsSidecar =
+    item?.kind === 'video' && !!audioCodec && !canPlayAudio(audioCodec) && !!item.path;
+  const pcmRef = useRef<PcmPlayer | null>(null);
+  const [pcmActive, setPcmActive] = useState(false);
+  const [pcmNotice, setPcmNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!needsSidecar || !item?.path) {
+      pcmRef.current?.dispose();
+      pcmRef.current = null;
+      setPcmActive(false);
+      setPcmNotice(null);
+      return;
+    }
+    if (!PcmPlayer.supported()) {
+      setPcmNotice('本机缺少 WebAudio 组件，此音轨无法出声');
+      return;
+    }
+    const player = new PcmPlayer({
+      path: item.path,
+      onError: (m) => setPcmNotice(m),
+    });
+    pcmRef.current = player;
+    setPcmActive(true);
+    const v = videoRef.current;
+    void player.open(v && v.currentTime > 0 ? v.currentTime : 0);
+    return () => {
+      player.dispose();
+      pcmRef.current = null;
+    };
+  }, [needsSidecar, item?.id, item?.path]);
+
+  /* The video element is the clock: mirror its play state into the PCM player
+   *  and re-seek when the two drift apart (a slow decode, a dropped chunk). */
+  useEffect(() => {
+    if (!pcmActive) return;
+    const v = videoRef.current;
+    if (!v) return;
+    let raf = 0;
+    let lastDriftCheck = 0;
+    const loop = (t: number) => {
+      const p = pcmRef.current;
+      if (p) {
+        p.tick();
+        if (t - lastDriftCheck > 500) {
+          lastDriftCheck = t;
+          const drift = v.currentTime - p.playedSeconds;
+          // Only correct a *visible* offset; chasing every millisecond makes
+          // the audio pump.
+          if (!v.paused && Math.abs(drift) > 0.35) void p.seek(Math.max(0, v.currentTime));
+        }
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    const onPlay = () => pcmRef.current?.setPaused(false);
+    const onPause = () => pcmRef.current?.setPaused(true);
+    const onSeek = () => {
+      const p = pcmRef.current;
+      if (p && !v.paused) void p.seek(Math.max(0, v.currentTime));
+    };
+    v.addEventListener('play', onPlay);
+    v.addEventListener('pause', onPause);
+    v.addEventListener('seeked', onSeek);
+    return () => {
+      cancelAnimationFrame(raf);
+      v.removeEventListener('play', onPlay);
+      v.removeEventListener('pause', onPause);
+      v.removeEventListener('seeked', onSeek);
+    };
+  }, [pcmActive, item?.id]);
 
   /* `default` on <track> only applies at insert time — force it visible. */
   useEffect(() => {
@@ -483,7 +560,9 @@ export default function Viewer() {
               // The element remounts per file: re-apply the persisted player
               // preferences before anything can play (volumechange syncs the bar).
               v.volume = settings.videoVolume ?? 1;
-              v.muted = settings.videoMuted ?? false;
+              // With the sidecar decoding, sound comes from WebAudio, so the
+              // element must not also try (and fail) to play the track.
+              v.muted = needsSidecar ? true : (settings.videoMuted ?? false);
               v.playbackRate = settings.videoRate ?? 1;
               const patch: Partial<ImageItem> = {};
               if (v.videoWidth && !item.width) {
@@ -536,6 +615,12 @@ export default function Viewer() {
             }}
             onClearSubtitle={() => applySub(null)}
           />
+          {(pcmActive || pcmNotice) && (
+            <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full border border-stroke bg-card/95 px-3 py-1 text-[11px] text-fg2 shadow-flyout backdrop-blur">
+              {pcmNotice ??
+                `此音轨（${codecLabel(audioCodec ?? undefined)}）本机无法直接解码，正在用内置 FFmpeg 解码`}
+            </div>
+          )}
         </div>
       )}
 

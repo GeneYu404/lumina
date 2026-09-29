@@ -745,6 +745,34 @@ async fn ffmpeg_probe(
     .map_err(|e| e.to_string())?
 }
 
+/// Start streaming a file's first audio track as s16le PCM over an IPC channel,
+/// from `start` seconds. Used when WebView2 cannot decode the track itself; the
+/// frontend feeds the PCM into WebAudio and mutes the `<video>` element.
+#[tauri::command]
+async fn ffmpeg_stream(
+    path: String,
+    start: f64,
+    on_pcm: tauri::ipc::Channel<tauri::ipc::InvokeResponseBody>,
+    reg: State<'_, Shared>,
+) -> Result<ffmpeg_sidecar::StreamInfo, String> {
+    let reg = reg.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let p = PathBuf::from(&path);
+        if !allowed(&reg, &p) {
+            return Err("path not allowed".to_string());
+        }
+        ffmpeg_sidecar::stream(&p, start, on_pcm)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Stop a running [`ffmpeg_stream`] (seek, pause-swap, or leaving the image).
+#[tauri::command]
+fn ffmpeg_stop(id: u32) {
+    ffmpeg_sidecar::stop(id);
+}
+
 /// What Windows asked us to open, kept for `launch_siblings`.
 struct Launch {
     targets: Vec<PathBuf>,
@@ -858,6 +886,8 @@ fn main() {
             read_image,
             read_media_info,
             ffmpeg_probe,
+            ffmpeg_stream,
+            ffmpeg_stop,
             shell_menu,
             shell_menu_state,
             assoc_state,

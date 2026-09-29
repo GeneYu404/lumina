@@ -10,6 +10,7 @@ import {
   Palette,
   Play,
   Repeat,
+  Scale,
   Scan,
   Shuffle,
   Sun,
@@ -27,6 +28,7 @@ import { Checkbox, Segmented, Select, Toggle } from '../ui/Controls';
 import { assocSet, assocState, openDefaultApps, setShellMenu, shellMenuState } from '../../native';
 import { ASSOC_EXTS, VIDEO_EXTS } from '../../utils/files';
 import { Dialog } from '../ui/Dialog';
+import { LicensesDialog } from './LicensesDialog';
 import { AppIcon } from '../ui/Icons';
 
 const S = useStore.getState;
@@ -85,6 +87,7 @@ export default function SettingsDialog() {
   const [shell, setShell] = useState(false);
   const [assoc, setAssoc] = useState<Set<string>>(() => new Set());
   const [assocOpen, setAssocOpen] = useState(false);
+  const [licenses, setLicenses] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -312,14 +315,20 @@ export default function SettingsDialog() {
       <Group title="关于">
         <div className="flex items-center gap-4 rounded-md border border-stroke bg-card px-4 py-3">
           <AppIcon size={40} />
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="text-[13px] font-semibold text-fg">拾光 Lumina 1.0</div>
             <div className="text-xs leading-5 text-fg2">
               Windows 11 风格 · React + Vite + Tailwind CSS。所有图片仅在本地浏览器中处理，不会上传。
             </div>
           </div>
+          <Button variant="standard" onClick={() => setLicenses(true)}>
+            <Scale size={14} />
+            开源许可
+          </Button>
         </div>
       </Group>
+
+      {licenses && <LicensesDialog open onClose={() => setLicenses(false)} />}
     </Dialog>
   );
 }
