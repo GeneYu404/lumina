@@ -649,7 +649,9 @@ async fn thumb_batch(paths: Vec<String>, width: u32, reg: State<'_, Shared>) -> 
             checked
                 .par_iter()
                 .filter_map(|(idx, p)| {
-                    let meta = std::fs::metadata(p).ok()?;
+                    let Ok(meta) = std::fs::metadata(p) else {
+                        return None;
+                    };
                     let mtime = meta
                         .modified()
                         .ok()
@@ -868,3 +870,45 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("error while running the photo viewer");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A real file on disk, decoded → resized → re-encoded. The thumbnail path
+    /// is the one thing the gallery, the filmstrip, the minimap and the
+    /// histogram all depend on, and it fails *silently* (the frontend falls
+    /// back to the full-size original), so it needs a test of its own.
+    #[test]
+    fn make_thumb_round_trips_a_png() {
+        let dir = std::env::temp_dir().join("lumina-thumb-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("sample.png");
+        // 64x48 RGBA, enough for the resizer to actually do something.
+        let mut img = image::RgbaImage::new(64, 48);
+        for (x, y, p) in img.enumerate_pixels_mut() {
+            *p = image::Rgba([(x * 4) as u8, (y * 5) as u8, 128, 255]);
+        }
+        img.save(&path).unwrap();
+
+        let (kind, bytes) = make_thumb(&path, 0, 1.0, 32).expect("make_thumb should succeed");
+        assert!(matches!(kind, 1 | 2), "unexpected kind {kind}");
+        assert!(!bytes.is_empty(), "empty thumbnail payload");
+
+        // And the result must be decodable again — a corrupt payload would
+        // render as a broken image rather than an obvious error.
+        let decoded = image::load_from_memory(&bytes).expect("thumbnail must decode");
+        assert_eq!(decoded.width(), 32);
+        assert_eq!(decoded.height(), 24);
+    }
+
+    #[test]
+    fn make_thumb_refuses_undecodable_extensions() {
+        let dir = std::env::temp_dir().join("lumina-thumb-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("vector.svg");
+        std::fs::write(&path, b"<svg xmlns='http://www.w3.org/2000/svg'/>").unwrap();
+        assert!(make_thumb(&path, 0, 1.0, 32).is_err(), "svg is not DECODABLE");
+    }
+}
+

@@ -120,22 +120,46 @@ function audioLabel(a: AudioStreamInfo): string {
   return parts.join(' · ');
 }
 
-function useStats(url: string | null, remote: boolean): ImageStats | null {
-  const [stats, setStats] = useState<ImageStats | null>(null);
+type StatsState =
+  | { status: 'loading' }
+  | { status: 'done'; stats: ImageStats }
+  | { status: 'error' }
+  | { status: 'skipped' };
+
+/**
+ * Histogram of the current image.
+ *
+ * Three states, not two: the old version folded "failed" into "still loading"
+ * (`catch(() => undefined)` returning null), so a source the browser cannot
+ * decode left the panel saying 正在分析… for the rest of the session. The URL
+ * falls back to the full image as well — the thumbnail may still be decoding,
+ * or may never arrive, and neither is a reason to show nothing.
+ */
+function useStats(url: string | null, remote: boolean): StatsState {
+  const [state, setState] = useState<StatsState>({ status: 'loading' });
   useEffect(() => {
-    setStats(null);
-    if (!url || remote) return;
+    if (remote) {
+      setState({ status: 'skipped' });
+      return;
+    }
+    if (!url) {
+      setState({ status: 'error' });
+      return;
+    }
     let cancelled = false;
+    setState({ status: 'loading' });
     computeStats(url)
-      .then((s) => {
-        if (!cancelled) setStats(s);
+      .then((stats) => {
+        if (!cancelled) setState({ status: 'done', stats });
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancelled) setState({ status: 'error' });
+      });
     return () => {
       cancelled = true;
     };
   }, [url, remote]);
-  return stats;
+  return state;
 }
 
 export function PanelHeader({ title, onClose }: { title: string; onClose: () => void }) {
@@ -206,7 +230,12 @@ export default function InfoPanel() {
   const { data: exif, loading } = useExif(item);
   const { info: media, loading: mediaLoading } = useMediaInfo(item);
   const isVideo = !!item && item.kind === 'video';
-  const stats = useStats(isVideo ? null : (item?.thumb ?? null), !!item?.remote);
+  // The thumbnail is the cheapest source, but it is not the only one: while it
+  // is still decoding (or if it never arrives) the full image gives the same
+  // numbers, and computeStats downsamples during decode either way.
+  const statsUrl = isVideo ? null : (item?.thumb || item?.url || null);
+  const statsState = useStats(statsUrl, !!item?.remote);
+  const stats = statsState.status === 'done' ? statsState.stats : null;
   const [copied, setCopied] = useState<string | null>(null);
 
   if (!item) return null;
@@ -253,7 +282,10 @@ export default function InfoPanel() {
   if (item.flipH || item.flipV) edits.push('已翻转');
   if (isAdjusted(item.adjust)) edits.push('已调色');
 
-  const folder = item.path.includes('/') ? item.path.slice(0, item.path.lastIndexOf('/')) : '';
+  // Rust hands back native Windows paths, so the separator is a backslash —
+  // testing for '/' alone hid the location row for every desktop file.
+  const lastSep = Math.max(item.path.lastIndexOf('/'), item.path.lastIndexOf('\\'));
+  const folder = lastSep > 0 ? item.path.slice(0, lastSep) : '';
 
   const copyHex = async (hex: string) => {
     try {
@@ -420,11 +452,15 @@ export default function InfoPanel() {
 
         {!isVideo && (
         <Section title="直方图">
-          {stats ? (
+          {statsState.status === 'done' && stats ? (
             <Histogram stats={stats} />
           ) : (
             <div className="flex h-24 items-center justify-center rounded-md border border-dashed border-stroke text-xs text-fg3">
-              {item.remote ? '在线图片无法分析' : '正在分析…'}
+              {statsState.status === 'skipped'
+                ? '在线图片无法分析'
+                : statsState.status === 'error'
+                  ? '无法分析这张图片'
+                  : '正在分析…'}
             </div>
           )}
         </Section>

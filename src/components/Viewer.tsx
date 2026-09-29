@@ -775,10 +775,13 @@ function Minimap({
       onDoubleClick={(e) => e.stopPropagation()}
     >
       <div className="relative cursor-crosshair overflow-hidden rounded bg-subtle" style={{ width: mw, height: mh }} onPointerDown={onPointerDown}>
-        {/* Static thumbnail only — the original would be one more decoder of an animation. */}
-        {item.thumb && (
+        {/* Static thumbnail only — the original would be one more decoder of an
+            animation. Falling back to the full image is a deliberate second
+            choice: an empty grey rectangle is worse than a re-decode, and the
+            browser has this file decoded already. */}
+        {(item.thumb || item.url) && (
         <img
-          src={item.thumb}
+          src={item.thumb || item.url}
           alt=""
           draggable={false}
           className="pointer-events-none absolute left-1/2 top-1/2 max-w-none"

@@ -279,23 +279,24 @@ export interface ImageStats {
   palette: string[];
 }
 
-/** Histogram + dominant colours (computed from a small version of the image). */
+/** Longest edge of the analysis buffer: 256 bins want ~256 rows of samples. */
+const STATS_EDGE = 256;
+
+/**
+ * Histogram + dominant colours.
+ *
+ * Deliberately decodes the **original** rather than the 320 px thumbnail the
+ * gallery uses: a thumbnail is a lossy WebP/JPEG re-encode, so its shadow and
+ * highlight ends are quantised and the curve lies exactly where a photographer
+ * looks for clipping. `createImageBitmap` with `resizeWidth/Height` lets the
+ * browser downsample *during* decode, so an 80 MP photo costs about the same
+ * as a thumbnail instead of allocating a full-size frame.
+ *
+ * Throws when the source cannot be read at all — the caller must be able to
+ * tell "still working" from "will never work".
+ */
 export async function computeStats(url: string): Promise<ImageStats> {
-  const img = await loadImageEl(url);
-  const w0 = img.naturalWidth || 200;
-  const h0 = img.naturalHeight || 200;
-  const s = Math.min(1, 220 / Math.max(w0, h0));
-  const w = Math.max(1, Math.round(w0 * s));
-  const h = Math.max(1, Math.round(h0 * s));
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  const ctx = c.getContext('2d', { willReadFrequently: true });
-  if (!ctx) throw new Error('canvas');
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(img, 0, 0, w, h);
-  const data = ctx.getImageData(0, 0, w, h).data;
+  const { data } = await samplePixels(url);
   const r = new Array<number>(256).fill(0);
   const g = new Array<number>(256).fill(0);
   const b = new Array<number>(256).fill(0);
@@ -327,4 +328,80 @@ export async function computeStats(url: string): Promise<ImageStats> {
     if (picked.length >= 6) break;
   }
   return { r, g, b, l, palette: picked.map((p) => toHex(p[0], p[1], p[2])) };
+}
+
+interface Sample {
+  w: number;
+  h: number;
+  data: Uint8ClampedArray;
+}
+
+/** RGBA bytes of a downsampled copy of the image at `url`. */
+async function samplePixels(url: string): Promise<Sample> {
+  const fast = await decodeDownsampled(url);
+  if (fast) return fast;
+
+  // Fallback: decode through an <img> and let the canvas downscale. This also
+  // covers sources `fetch` cannot read (some asset:// responses).
+  const img = await loadImageEl(url);
+  const fw = img.naturalWidth || 200;
+  const fh = img.naturalHeight || 200;
+  const s = Math.min(1, STATS_EDGE / Math.max(fw, fh));
+  const w = Math.max(1, Math.round(fw * s));
+  const h = Math.max(1, Math.round(fh * s));
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  if (!ctx) throw new Error('无法创建画布');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, 0, 0, w, h);
+  return { w, h, data: ctx.getImageData(0, 0, w, h).data };
+}
+
+/** `createImageBitmap` path: one decode, downsampled by the browser itself. */
+async function decodeDownsampled(url: string): Promise<Sample | null> {
+  if (typeof createImageBitmap !== 'function') return null;
+  let blob: Blob;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    blob = await res.blob();
+  } catch {
+    return null;
+  }
+  let fw = 0;
+  let fh = 0;
+  try {
+    const probe = await createImageBitmap(blob);
+    fw = probe.width;
+    fh = probe.height;
+    probe.close();
+  } catch {
+    return null;
+  }
+  if (!fw || !fh) return null;
+  const s = Math.min(1, STATS_EDGE / Math.max(fw, fh));
+  const w = Math.max(1, Math.round(fw * s));
+  const h = Math.max(1, Math.round(fh * s));
+  let bmp: ImageBitmap;
+  try {
+    bmp = await createImageBitmap(blob, { resizeWidth: w, resizeHeight: h, resizeQuality: 'high' });
+  } catch {
+    return null;
+  }
+  try {
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    if (!ctx) throw new Error('无法创建画布');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(bmp, 0, 0, w, h);
+    return { w, h, data: ctx.getImageData(0, 0, w, h).data };
+  } finally {
+    bmp.close();
+  }
 }

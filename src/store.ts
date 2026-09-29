@@ -382,6 +382,12 @@ export const S = () => useStore.getState();
  *  the old one (the folder path in the filter would no longer match). */
 const DEFAULT_GALLERY_FILTER: GalleryFilter = { query: '', kind: 'all', folder: '', time: 'all' };
 
+// The boot list becomes the initial state verbatim, so the id index has to be
+// seeded here — without it every indexOf() on a file-association / CLI launch
+// returns -1 and the first thumbnail request is silently dropped (empty gallery
+// cells, grey minimap, histogram stuck on "analysing").
+rebuildIndex(bootImages);
+
 export const useStore = create<Store>()((set, get) => ({
   images: bootImages,
   currentId: bootCurrent ? bootCurrent.id : null,
@@ -844,6 +850,25 @@ export const getStreamGen = () => streamGen;
 /* ----------------------- demand-driven thumbnails ------------------------- */
 
 const THUMB_CHUNK = 32;
+/** A batch that has not answered by now is treated as failed, not pending. */
+const THUMB_TIMEOUT_MS = 15_000;
+
+/** Reject rather than hang: see the note at the `thumbBatch` call site. */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('缩略图批次超时')), ms);
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
 /** Bumped whenever a fill loop starts, so stale loops stop. */
 let thumbGeneration = 0;
 let fillActive = false;
@@ -902,9 +927,17 @@ async function fillThumbs() {
 
       // Images: one packed Rust batch (indices line up with `images`).
       // Videos: the system decoder paints posters.
+      //
+      // The timeout matters: a `thumb_batch` that never settles would leave
+      // thumbState at 'loading' forever, and requestThumbs only ever retries
+      // 'idle' items — so one hung IPC silently costs the item its thumbnail
+      // for the whole session (empty minimap, no histogram, no gallery cell).
       let imageThumbs: (string | null)[];
       try {
-        imageThumbs = await thumbBatch(images.map((i) => i.path));
+        imageThumbs = await withTimeout(
+          thumbBatch(images.map((i) => i.path)),
+          THUMB_TIMEOUT_MS,
+        );
       } catch {
         imageThumbs = images.map(() => null);
       }
@@ -989,7 +1022,9 @@ function pumpThumbs() {
       : item.remote
         ? loadImageEl(url).then((img) => ({ thumb: url, width: img.naturalWidth || 1024, height: img.naturalHeight || 1024 }))
         : makeThumb(url).then((r) => r as { thumb: string; width: number; height: number });
-    task
+    // Same reasoning as the Rust batch: a decoder that never settles would pin
+    // thumbState at 'loading' and the item could never be requested again.
+    withTimeout(task, THUMB_TIMEOUT_MS)
       .then((res) => {
         const st = useStore.getState();
         const cur = st.images.find((i) => i.id === id);
@@ -1022,7 +1057,15 @@ function pumpThumbs() {
         const st = useStore.getState();
         const cur = st.images.find((i) => i.id === id);
         if (cur && cur.url === url) {
-          pendingPatches.set(id, isVideo ? { thumb: null, thumbState: 'done' } : { thumbState: 'error', error: true });
+          if (isVideo) {
+            // Undecodable video (e.g. HEVC without the codec): placeholder.
+            pendingPatches.set(id, { thumb: null, thumbState: 'done' });
+          } else {
+            // The thumbnail is an optimisation, not a requirement: fall back to
+            // the original rather than flagging the item as broken, which would
+            // also make requestThumbs skip it forever (`error` is sticky).
+            pendingPatches.set(id, { thumb: url, thumbState: 'done' });
+          }
           scheduleFlush();
         }
       })
