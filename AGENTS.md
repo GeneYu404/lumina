@@ -84,6 +84,14 @@ cd src-tauri && cargo test --bin lumina    # sidecar 接缝、WAV 解析、缩�
 `bun run build:sidecar`（需 MSYS2 MINGW64，构建参数与三个坑见
 [docs/build-windows.md](docs/build-windows.md) 的「自编译 sidecar」一节）。
 
+### 构建产物统一归档到 `D:\Tool`
+
+打包好的可执行文件**一律放进 `D:\Tool`**，不要留在项目目录里散落：
+
+- `bun run tauri build` 产出后，把 `lumina.exe` 与 `ffmpeg-*.exe` 复制到 `D:\Tool\`
+- 交付给用户的文件是 `D:\Tool\` 里的那份
+- `src-tauri/target/release/` 属构建缓存，**不是**交付物
+
 ## 7. 紧急联系
 
 发现以下情况**立即停下问用户**，不要自作主张修复（写错一次 cost 半小时）：
