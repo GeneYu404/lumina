@@ -208,11 +208,11 @@ function restoreNeedsSplash() {
 
 function DropOverlay() {
   return (
-    <div className="animate-fade-in pointer-events-none absolute inset-2 z-50 flex items-center justify-center rounded-xl border-2 border-dashed border-accent bg-accent-soft backdrop-blur-[2px]">
-      <div className="flex flex-col items-center gap-3 rounded-xl border border-stroke bg-acrylic px-10 py-7 shadow-flyout">
-        <ImagePlus size={38} strokeWidth={1.5} className="text-accent" />
-        <div className="text-base font-semibold text-fg">释放以打开图片或视频</div>
-        <div className="text-xs text-fg2">支持多个文件以及整个文件夹</div>
+    <div className="drop-overlay">
+      <div className="drop-card">
+        <ImagePlus size={38} strokeWidth={1.5} className="u-accent" />
+        <div className="drop-title">释放以打开图片或视频</div>
+        <div className="drop-sub">支持多个文件以及整个文件夹</div>
       </div>
     </div>
   );
@@ -256,15 +256,15 @@ export default function App() {
     <>
       <WindowFrame>
         {!immersive && <CommandBar />}
-        <div className="relative flex min-h-0 flex-1">
-          <div className="relative flex min-w-0 flex-1 flex-col">
+        <div className="body-row">
+          <div className="main-col">
             {!hasImages ? (
               <Welcome />
             ) : mode === 'gallery' ? (
               <Gallery />
             ) : (
               <>
-                <div className="relative min-h-0 flex-1">
+                <div className="viewer-pane">
                   <Viewer />
                 </div>
                 {showFilm && !immersive && visibleCount > 1 && <Filmstrip />}

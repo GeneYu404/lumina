@@ -51,22 +51,22 @@ const PRESETS: { name: string; adjust: Partial<Adjustments> }[] = [
 ];
 
 function PresetPreview({ item, adjust }: { item: ImageItem; adjust: Adjustments }) {
-  if (!item.thumb) return <div className="h-full w-full animate-pulse bg-subtle" />;
+  if (!item.thumb) return <div className="preset-blank" />;
   const minSide = Math.max(1, Math.min(item.width || 80, item.height || 80));
   const blur = blurNatural(adjust, item.width || 80, item.height || 80) * (84 / minSide);
   const tc = temperatureColor(adjust.temperature);
   const vg = vignetteGradient(adjust.vignette);
   return (
     <div
-      className="absolute inset-0"
+      className="preset-preview"
       style={{
         transform: `rotate(${item.rotation}deg) scale(${item.flipH ? -1 : 1}, ${item.flipV ? -1 : 1})`,
         isolation: 'isolate',
       }}
     >
-      <img src={item.thumb} alt="" draggable={false} className="h-full w-full max-w-none object-cover" style={{ filter: cssFilter(adjust, blur) }} />
-      {tc && <div className="absolute inset-0" style={{ background: tc, mixBlendMode: 'soft-light' }} />}
-      {vg && <div className="absolute inset-0" style={{ background: vg }} />}
+      <img src={item.thumb} alt="" draggable={false} className="preset-img" style={{ filter: cssFilter(adjust, blur) }} />
+      {tc && <div className="media-overlay" style={{ background: tc, mixBlendMode: 'soft-light' }} />}
+      {vg && <div className="media-overlay" style={{ background: vg }} />}
     </div>
   );
 }
@@ -94,18 +94,18 @@ function AdjustSlider({
 }) {
   const changed = value !== neutral;
   return (
-    <div className="py-1">
-      <div className="flex items-center justify-between text-[13px]">
+    <div className="adj">
+      <div className="adj-head">
         <button
           type="button"
           title="双击重置"
           onDoubleClick={() => onChange(neutral)}
-          className="flex items-center gap-2 rounded px-0.5 text-fg"
+          className="adj-label"
         >
-          <Icon size={15} strokeWidth={1.6} className="text-fg2" />
+          <Icon size={15} strokeWidth={1.6} className="adj-icon" />
           {label}
         </button>
-        <span className={cn('text-xs tabular-nums', changed ? 'text-accent' : 'text-fg3')}>
+        <span className={cn('adj-value', changed && 'adj-value--on')}>
           {format ? format(value) : signed(value - neutral)}
         </span>
       </div>
@@ -126,11 +126,11 @@ export default function EditPanel() {
   const stopCompare = () => S().setComparing(false);
 
   return (
-    <aside className="animate-panel-in flex w-[320px] shrink-0 flex-col border-l border-stroke bg-layer max-md:absolute max-md:inset-y-0 max-md:right-0 max-md:z-30 max-md:bg-app max-md:shadow-2xl">
+    <aside className="panel">
       <PanelHeader title="编辑与调整" onClose={() => S().setPanel(null)} />
-      <div className="win-scroll min-h-0 flex-1 overflow-y-auto px-4 pb-4">
-        <Section title="滤镜" right={<WandSparkles size={14} className="text-fg3" />}>
-          <div className="grid grid-cols-3 gap-2">
+      <div className="panel-body panel-body--tight win-scroll">
+        <Section title="滤镜" right={<WandSparkles size={14} className="u-fg3" />}>
+          <div className="preset-grid">
             {PRESETS.map((p) => {
               const full: Adjustments = { ...DEFAULT_ADJUST, ...p.adjust };
               const active = sameAdjust(full, a);
@@ -139,12 +139,9 @@ export default function EditPanel() {
                   key={p.name}
                   type="button"
                   onClick={() => S().replaceAdjust(item.id, full)}
-                  className={cn(
-                    'flex flex-col items-center gap-1 rounded-md p-1 text-xs transition-colors',
-                    active ? 'bg-accent-soft text-accent' : 'text-fg hover:bg-subtle',
-                  )}
+                  className={cn('preset', active ? 'preset--on' : 'preset--off')}
                 >
-                  <div className={cn('relative aspect-square w-full overflow-hidden rounded', active && 'outline-2 outline-accent')}>
+                  <div className={cn('preset-frame', active && 'preset-frame--on')}>
                     <PresetPreview item={item} adjust={full} />
                   </div>
                   {p.name}
@@ -155,7 +152,7 @@ export default function EditPanel() {
         </Section>
 
         <Section title="旋转与裁剪">
-          <div className="grid grid-cols-5 gap-1">
+          <div className="rot-grid">
             {[
               { icon: Crop, label: '裁剪', fn: startCrop, disabled: item.remote },
               { icon: RotateCcw, label: '左转', fn: () => S().rotate(item.id, -90) },
@@ -168,7 +165,7 @@ export default function EditPanel() {
                 type="button"
                 disabled={b.disabled}
                 onClick={b.fn}
-                className="flex flex-col items-center gap-1 rounded-md py-2 text-[11px] text-fg hover:bg-subtle disabled:opacity-40"
+                className="rot-btn"
               >
                 <b.icon size={18} strokeWidth={1.6} />
                 {b.label}
@@ -200,15 +197,15 @@ export default function EditPanel() {
           <button
             type="button"
             onClick={() => S().revertEdits(item.id)}
-            className="mt-1 flex items-center gap-2 text-[13px] text-accent hover:underline"
+            className="panel-revert"
           >
             <Undo2 size={14} /> 还原为原始图片
           </button>
         )}
       </div>
-      <footer className="flex items-center gap-2 border-t border-stroke p-3">
+      <footer className="panel-foot">
         <Button
-          className="px-3"
+          className="btn--px3"
           disabled={!adjusted}
           title="按住查看原图"
           onPointerDown={() => S().setComparing(true)}
@@ -218,10 +215,10 @@ export default function EditPanel() {
         >
           <Eye size={15} /> 对比
         </Button>
-        <Button className="px-3" disabled={!adjusted} onClick={() => S().replaceAdjust(item.id, DEFAULT_ADJUST)}>
+        <Button className="btn--px3" disabled={!adjusted} onClick={() => S().replaceAdjust(item.id, DEFAULT_ADJUST)}>
           <RefreshCcw size={14} /> 重置
         </Button>
-        <Button variant="accent" className="ml-auto px-3" onClick={() => S().setDialog('saveAs')}>
+        <Button variant="accent" className="btn--px3 btn--ml-auto" onClick={() => S().setDialog('saveAs')}>
           <Save size={15} /> 另存为
         </Button>
       </footer>

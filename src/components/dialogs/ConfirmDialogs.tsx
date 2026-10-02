@@ -32,10 +32,10 @@ export function ConfirmRemoveDialog() {
         </>
       }
     >
-      <p className="leading-6 text-fg2">
-        “<span className="text-fg">{item?.name}</span>” 将从查看器列表中移除。磁盘上的原始文件不会被删除。
+      <p className="confirm-text">
+        “<span className="u-fg">{item?.name}</span>” 将从查看器列表中移除。磁盘上的原始文件不会被删除。
       </p>
-      <div className="mt-4">
+      <div className="confirm-box">
         <Checkbox checked={dontAsk} onChange={setDontAsk}>
           不再询问
         </Checkbox>
@@ -72,7 +72,7 @@ export function CloseAllDialog() {
         </>
       }
     >
-      <p className="leading-6 text-fg2">当前打开了 {count} 个文件。关闭后，所有未另存的编辑（裁剪、调色等）都将丢失。</p>
+      <p className="confirm-text">当前打开了 {count} 个文件。关闭后，所有未另存的编辑（裁剪、调色等）都将丢失。</p>
     </Dialog>
   );
 }

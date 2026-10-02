@@ -44,8 +44,8 @@ function DesktopFrame({ children }: { children: ReactNode }) {
     void setDesktopTitle(title ? `${title} - 拾光` : '拾光');
   }, [title]);
   return (
-    <div className="fixed inset-0 flex flex-col overflow-hidden bg-app text-fg">
-      <div className="relative flex min-h-0 flex-1 flex-col">{children}</div>
+    <div className="app-shell">
+      <div className="app-body">{children}</div>
     </div>
   );
 }
@@ -139,15 +139,15 @@ function SimulatedFrame({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="fixed inset-0 overflow-hidden">
+    <div className="desktop-root">
       <Wallpaper />
       <DesktopIcon onOpen={openApp} />
 
       <div
         className={cn(
-          'absolute flex flex-col overflow-hidden bg-app text-fg transition-[opacity,transform] duration-200 ease-out',
-          isMax ? 'inset-0' : 'rounded-lg border border-stroke shadow-window',
-          hidden && 'pointer-events-none opacity-0',
+          'sim-window',
+          isMax ? 'sim-window--max' : 'sim-window--normal',
+          hidden && 'sim-window--hidden',
         )}
         style={{
           ...(isMax ? {} : { left: rect.x, top: rect.y, width: rect.w, height: rect.h }),
@@ -158,24 +158,24 @@ function SimulatedFrame({ children }: { children: ReactNode }) {
       >
         {!immersive && (
           <div
-            className="flex h-8 shrink-0 select-none items-center"
+            className="titlebar"
             onPointerDown={startDrag}
             onDoubleClick={(e) => {
               if ((e.target as HTMLElement).closest('button')) return;
               S().setWin({ max: !win.max });
             }}
           >
-            <div className="flex min-w-0 flex-1 items-center gap-2.5 pl-3">
-              <AppIcon size={16} className="shrink-0" />
-              <span className="shrink-0 text-xs font-semibold tracking-wide text-fg">拾光</span>
+            <div className="titlebar-main">
+              <AppIcon size={16} className="u-shrink-0" />
+              <span className="titlebar-name">拾光</span>
               {title && (
                 <>
-                  <span className="text-xs text-fg3">—</span>
-                  <span className="truncate text-xs text-fg2">{title}</span>
+                  <span className="titlebar-dash">—</span>
+                  <span className="titlebar-title">{title}</span>
                 </>
               )}
             </div>
-            <div className="flex h-full shrink-0">
+            <div className="titlebar-buttons">
               <CaptionButton label="最小化" onClick={() => S().setWin({ min: true })}>
                 <CaptionMin />
               </CaptionButton>
@@ -188,9 +188,9 @@ function SimulatedFrame({ children }: { children: ReactNode }) {
             </div>
           </div>
         )}
-        <div className="relative flex min-h-0 flex-1 flex-col">{children}</div>
+        <div className="app-body">{children}</div>
         {!isMax && !hidden && (
-          <div onPointerDown={startResize} className="absolute bottom-0 right-0 z-50 h-4 w-4 cursor-nwse-resize" aria-hidden="true" />
+          <div onPointerDown={startResize} className="win-resize" aria-hidden="true" />
         )}
       </div>
 
@@ -218,10 +218,7 @@ function CaptionButton({
       title={label}
       aria-label={label}
       onClick={onClick}
-      className={cn(
-        'flex h-full w-[46px] items-center justify-center text-fg transition-colors',
-        close ? 'hover:bg-[#c42b1c] hover:text-white active:bg-[#c42b1c]/85' : 'hover:bg-subtle active:bg-subtle-press',
-      )}
+      className={cn('caption-btn', close && 'caption-btn--close')}
     >
       {children}
     </button>
@@ -237,7 +234,7 @@ function DesktopIcon({ onOpen }: { onOpen: () => void }) {
       onKeyDown={(e) => {
         if (e.key === 'Enter') onOpen();
       }}
-      className="absolute left-3 top-3 flex w-[88px] flex-col items-center gap-1.5 rounded-md border border-transparent p-2 text-center text-xs text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.8)] hover:bg-white/10 focus:border-white/25 focus:bg-white/15 focus:outline-none"
+      className="desktop-icon"
     >
       <AppIcon size={46} />
       <span>拾光</span>
@@ -261,8 +258,8 @@ function Taskbar({
   const time = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
   const date = now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric' });
   return (
-    <div className="absolute inset-x-0 bottom-0 z-10 flex h-12 items-center justify-center border-t border-stroke bg-taskbar backdrop-blur-2xl">
-      <div className="flex items-center gap-1">
+    <div className="taskbar">
+      <div className="taskbar-apps">
         <TaskButton title="开始" onClick={(e) => start.toggle(e.currentTarget)}>
           <WinLogo size={22} />
         </TaskButton>
@@ -270,7 +267,7 @@ function Taskbar({
           <AppIcon size={26} />
         </TaskButton>
       </div>
-      <div className="absolute right-3 flex flex-col items-end text-[12px] leading-4 text-fg">
+      <div className="taskbar-clock">
         <span>{time}</span>
         <span>{date}</span>
       </div>
@@ -309,19 +306,11 @@ function TaskButton({
       title={title}
       aria-label={title}
       onClick={onClick}
-      className={cn(
-        'relative flex h-10 w-10 items-center justify-center rounded-md transition-colors hover:bg-subtle active:scale-95',
-        active && 'bg-subtle',
-      )}
+      className={cn('task-btn', active && 'task-btn--active')}
     >
       {children}
       {running && (
-        <span
-          className={cn(
-            'absolute bottom-0.5 h-[3px] rounded-full transition-all',
-            active ? 'w-4 bg-accent' : 'w-1.5 bg-fg3',
-          )}
-        />
+        <span className={cn('task-ind', active ? 'task-ind--on' : 'task-ind--idle')} />
       )}
     </button>
   );

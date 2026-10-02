@@ -36,18 +36,18 @@ const S = useStore.getState;
 const ACCENTS = ['#0078D4', '#0099BC', '#00B294', '#10893E', '#FFB900', '#F7630C', '#E81123', '#E3008C', '#8764B8', '#6B69D6', '#7A7574'];
 
 const BG_OPTIONS: { value: ViewerBg; label: string; cls: string }[] = [
-  { value: 'theme', label: '跟随主题', cls: 'bg-viewer' },
-  { value: 'black', label: '黑色', cls: 'bg-black' },
-  { value: 'white', label: '白色', cls: 'bg-white' },
-  { value: 'checker', label: '棋盘格', cls: 'bg-checker' },
-  { value: 'ambient', label: '氛围模糊', cls: 'bg-linear-to-br from-sky-400 via-fuchsia-400 to-amber-300' },
+  { value: 'theme', label: '跟随主题', cls: 'set-bg-swatch--theme' },
+  { value: 'black', label: '黑色', cls: 'set-bg-swatch--black' },
+  { value: 'white', label: '白色', cls: 'set-bg-swatch--white' },
+  { value: 'checker', label: '棋盘格', cls: 'set-bg-swatch--checker' },
+  { value: 'ambient', label: '氛围模糊', cls: 'set-bg-swatch--ambient' },
 ];
 
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="mt-5 first:mt-0">
-      <h3 className="mb-2 text-[13px] font-semibold text-fg">{title}</h3>
-      <div className="flex flex-col gap-1">{children}</div>
+    <div className="set-group">
+      <h3 className="set-group-title">{title}</h3>
+      <div className="set-group-body">{children}</div>
     </div>
   );
 }
@@ -66,15 +66,15 @@ function Card({
   vertical?: boolean;
 }) {
   return (
-    <div className={cn('rounded-md border border-stroke bg-card px-4 py-3', vertical ? 'flex flex-col gap-3' : 'flex items-center gap-4')}>
-      <div className="flex min-w-0 flex-1 items-center gap-4">
-        <Icon size={18} strokeWidth={1.6} className="shrink-0 text-fg" />
-        <div className="min-w-0">
-          <div className="text-[13px] text-fg">{title}</div>
-          {desc && <div className="text-xs text-fg2">{desc}</div>}
+    <div className={cn('set-card', vertical ? 'set-card--col' : 'set-card--row')}>
+      <div className="set-card-main">
+        <Icon size={18} strokeWidth={1.6} className="set-card-icon" />
+        <div className="set-card-body">
+          <div className="set-card-title">{title}</div>
+          {desc && <div className="set-card-desc">{desc}</div>}
         </div>
       </div>
-      <div className={cn(vertical ? 'pl-[34px]' : 'shrink-0')}>{children}</div>
+      <div className={cn(vertical ? 'set-card-ctrl--col' : 'set-card-ctrl')}>{children}</div>
     </div>
   );
 }
@@ -129,37 +129,31 @@ export default function SettingsDialog() {
           />
         </Card>
         <Card icon={Droplet} title="强调色" desc="用于按钮、选中项和高亮" vertical>
-          <div className="flex flex-wrap gap-2">
+          <div className="set-swatches">
             {ACCENTS.map((c) => (
               <button
                 key={c}
                 type="button"
                 aria-label={`强调色 ${c}`}
                 onClick={() => set('accent', c)}
-                className={cn(
-                  'flex h-8 w-8 items-center justify-center rounded-md outline-offset-2 transition-transform hover:scale-105',
-                  st.accent.toLowerCase() === c.toLowerCase() && 'outline-2 outline-fg',
-                )}
+                className={cn('set-swatch', st.accent.toLowerCase() === c.toLowerCase() && 'set-swatch--on')}
                 style={{ background: c }}
               >
-                {st.accent.toLowerCase() === c.toLowerCase() && <Check size={16} className="text-white drop-shadow" strokeWidth={2.5} />}
+                {st.accent.toLowerCase() === c.toLowerCase() && <Check size={16} className="fav-shadow" strokeWidth={2.5} />}
               </button>
             ))}
           </div>
         </Card>
         <Card icon={ImageIcon} title="查看器背景" vertical>
-          <div className="grid grid-cols-5 gap-2">
+          <div className="set-bgs">
             {BG_OPTIONS.map((o) => (
               <button
                 key={o.value}
                 type="button"
                 onClick={() => set('viewerBg', o.value)}
-                className={cn(
-                  'flex flex-col items-center gap-1.5 rounded-md p-1.5 text-[11px] text-fg transition-colors',
-                  st.viewerBg === o.value ? 'bg-accent-soft text-accent' : 'hover:bg-subtle',
-                )}
+                className={cn('set-bg', st.viewerBg === o.value ? 'set-bg--on' : 'set-bg--off')}
               >
-                <span className={cn('h-9 w-full rounded border border-stroke', o.cls, st.viewerBg === o.value && 'outline-2 outline-accent')} />
+                <span className={cn('set-bg-swatch', o.cls, st.viewerBg === o.value && 'set-bg-swatch--on')} />
                 {o.label}
               </button>
             ))}
@@ -170,7 +164,7 @@ export default function SettingsDialog() {
       <Group title="浏览">
         <Card icon={MousePointer2} title="鼠标滚轮" desc="按住 Ctrl 滚动始终为缩放">
           <Select
-            className="w-32"
+            className="select-w32"
             value={st.wheelAction}
             options={[
               { value: 'zoom', label: '缩放' },
@@ -202,7 +196,7 @@ export default function SettingsDialog() {
       <Group title="幻灯片放映">
         <Card icon={Timer} title="切换间隔">
           <Select
-            className="w-32"
+            className="select-w32"
             value={st.slideInterval}
             options={[2, 3, 4, 5, 8, 10, 15, 30].map((n) => ({ value: n, label: `${n} 秒` }))}
             onChange={(v) => set('slideInterval', v)}
@@ -210,7 +204,7 @@ export default function SettingsDialog() {
         </Card>
         <Card icon={Play} title="过渡效果">
           <Select<SlideTransition>
-            className="w-32"
+            className="select-w32"
             value={st.slideTransition}
             options={[
               { value: 'fade', label: '淡入淡出' },
@@ -245,19 +239,19 @@ export default function SettingsDialog() {
           <Toggle checked={st.restoreSession} onChange={(v) => set('restoreSession', v)} label="启动时恢复" />
         </Card>
         <Card icon={Palette} title="文件关联" desc="选择拾光可以打开的文件类型；已关联的类型不再在首页重复推荐" vertical>
-          <div className="flex flex-wrap items-center gap-2 pl-[34px]">
-            <Button className="px-3" onClick={() => setAssocOpen((v) => !v)}>
+          <div className="set-assoc-wrap">
+            <Button className="btn--px3" onClick={() => setAssocOpen((v) => !v)}>
               {assocOpen ? '收起' : '管理关联'}
             </Button>
-            <Button className="px-3" onClick={() => void openDefaultApps()}>
+            <Button className="btn--px3" onClick={() => void openDefaultApps()}>
               打开 Windows 默认应用
             </Button>
           </div>
           {assocOpen && (
-            <div className="pl-[34px]">
-              <div className="mb-2 flex flex-wrap gap-2">
+            <div className="set-assoc-more">
+              <div className="set-assoc-btns">
                 <Button
-                  className="px-3"
+                  className="btn--px3"
                   onClick={async () => {
                     for (const e of ASSOC_EXTS) await assocSet(e, true);
                     setAssoc(new Set(ASSOC_EXTS));
@@ -266,7 +260,7 @@ export default function SettingsDialog() {
                   全选
                 </Button>
                 <Button
-                  className="px-3"
+                  className="btn--px3"
                   onClick={async () => {
                     for (const e of [...assoc]) await assocSet(e, false);
                     setAssoc(new Set());
@@ -275,7 +269,7 @@ export default function SettingsDialog() {
                   取消全选
                 </Button>
                 <Button
-                  className="px-3"
+                  className="btn--px3"
                   onClick={async () => {
                     const defaults = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'mp4'];
                     for (const e of ASSOC_EXTS) await assocSet(e, defaults.includes(e));
@@ -285,7 +279,7 @@ export default function SettingsDialog() {
                   恢复默认
                 </Button>
               </div>
-              <div className="grid grid-cols-3 gap-x-3 gap-y-1 sm:grid-cols-4">
+              <div className="set-assoc-grid">
                 {ASSOC_EXTS.map((ext) => (
                   <Checkbox
                     key={ext}
@@ -300,11 +294,11 @@ export default function SettingsDialog() {
                       });
                     }}
                   >
-                    .{ext} <span className="text-[10px] text-fg3">{VIDEO_EXTS.has(ext) ? '视频' : '图片'}</span>
+                    .{ext} <span className="set-ext">{VIDEO_EXTS.has(ext) ? '视频' : '图片'}</span>
                   </Checkbox>
                 ))}
               </div>
-              <p className="mt-2 text-[11px] leading-5 text-fg3">
+              <p className="set-assoc-note">
                 出于安全原因，Windows 11 不允许程序自行设为“默认应用”，请在弹出的系统设置页中选择拾光。
               </p>
             </div>
@@ -313,11 +307,11 @@ export default function SettingsDialog() {
       </Group>
 
       <Group title="关于">
-        <div className="flex items-center gap-4 rounded-md border border-stroke bg-card px-4 py-3">
+        <div className="set-about">
           <AppIcon size={40} />
-          <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-semibold text-fg">拾光 Lumina 1.0</div>
-            <div className="text-xs leading-5 text-fg2">
+          <div className="set-about-body">
+            <div className="set-about-title">拾光 Lumina 1.0</div>
+            <div className="set-about-desc">
               Windows 11 风格 · React + Vite + Tailwind CSS。所有图片仅在本地浏览器中处理，不会上传。
             </div>
           </div>

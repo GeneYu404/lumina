@@ -48,11 +48,7 @@ function CtrlBtn({
       title={label}
       aria-label={label}
       onClick={onClick}
-      className={cn(
-        'flex h-8 shrink-0 items-center justify-center rounded-md text-white/90 transition-colors hover:bg-white/15 active:bg-white/10',
-        wide ? 'min-w-[46px] px-1.5 text-[12px] font-medium tabular-nums' : 'w-8',
-        active && 'text-accent',
-      )}
+      className={cn('vbtn', wide && 'vbtn--wide', active && 'vbtn--active')}
     >
       {children}
     </button>
@@ -214,19 +210,16 @@ export default function VideoControls({
         hoverBar.current = false;
         poke();
       }}
-      className={cn(
-        'absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/85 via-black/45 to-transparent px-3 pb-2 pt-9 transition-all duration-300',
-        visible ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-2 opacity-0',
-      )}
+      className={cn('vbar', visible ? 'vbar--on' : 'vbar--off')}
     >
       {warn && (
-        <div className="mb-1.5 flex items-center gap-2 rounded-md bg-[#3b2a10]/90 px-2 py-1 text-[11px] text-[#ffc978] ring-1 ring-[#ffb454]/40">
-          <TriangleAlert size={13} className="shrink-0" />
-          <span className="truncate">音频编码 {audioCodec} 不受 WebView2 支持 · 播放将无声</span>
+        <div className="vbar-warn">
+          <TriangleAlert size={13} className="u-shrink-0" />
+          <span className="u-truncate">音频编码 {audioCodec} 不受 WebView2 支持 · 播放将无声</span>
           <button
             type="button"
             onClick={() => openInSystemPlayer(item.path)}
-            className="ml-auto shrink-0 rounded bg-[#ffb454]/25 px-2 py-0.5 text-[11px] font-medium text-[#ffd9a8] transition-colors hover:bg-[#ffb454]/40"
+            className="vbar-warn-btn"
           >
             用系统播放器打开
           </button>
@@ -236,7 +229,7 @@ export default function VideoControls({
       {/* seek bar: click / drag to jump, hover shows the target time */}
       <div
         ref={trackRef}
-        className="group/seek relative flex h-4 cursor-pointer touch-none items-center"
+        className="seek"
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture(e.pointerId);
           dragging.current = true;
@@ -263,17 +256,14 @@ export default function VideoControls({
           if (!dragging.current) setHover(null);
         }}
       >
-        <div className="relative h-[5px] w-full rounded-full bg-white/25 transition-all duration-150 group-hover/seek:h-[7px]">
-          <div className="absolute inset-y-0 left-0 rounded-full bg-white/45" style={{ width: `${bufferedPct}%` }} />
-          <div className="absolute inset-y-0 left-0 rounded-full bg-white" style={{ width: `${playedPct}%` }} />
-          <div
-            className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white opacity-0 shadow transition-opacity group-hover/seek:opacity-100"
-            style={{ left: `${playedPct}%` }}
-          />
+        <div className="seek-track">
+          <div className="seek-buffer" style={{ width: `${bufferedPct}%` }} />
+          <div className="seek-play" style={{ width: `${playedPct}%` }} />
+          <div className="seek-knob" style={{ left: `${playedPct}%` }} />
         </div>
         {hover !== null && dur > 0 && (
           <div
-            className="pointer-events-none absolute bottom-full mb-1.5 -translate-x-1/2 rounded bg-black/85 px-1.5 py-0.5 text-[11px] text-white tabular-nums"
+            className="seek-tip"
             style={{ left: `${clamp(hover, 0.05, 0.95) * 100}%` }}
           >
             {fmt(hover * dur)}
@@ -282,7 +272,7 @@ export default function VideoControls({
       </div>
 
       {/* buttons */}
-      <div className="mt-1 flex items-center gap-0.5">
+      <div className="vbar-btns">
         {total > 1 && (
           <CtrlBtn label="上一个文件 (←)" onClick={() => S().step(-1)}>
             <ChevronLeft size={18} strokeWidth={1.8} />
@@ -296,11 +286,11 @@ export default function VideoControls({
             <ChevronRight size={18} strokeWidth={1.8} />
           </CtrlBtn>
         )}
-        <span className="px-2 text-[12px] text-white/85 tabular-nums">
+        <span className="vbar-time">
           {fmt(media.current)} / {fmt(dur)}
         </span>
 
-        <div className="flex-1" />
+        <div className="vbar-gap" />
 
         <CtrlBtn label={media.muted ? '取消静音 (M)' : '静音 (M)'} onClick={toggleVideoMute}>
           {vol === 0 || media.muted ? (
@@ -323,7 +313,7 @@ export default function VideoControls({
           // Release focus so Space/J/K/L return to the global key handler
           // instead of being swallowed by the focused range input.
           onPointerUp={(e) => e.currentTarget.blur()}
-          className="pv-vol mr-1 h-1 w-16 shrink-0 cursor-pointer appearance-none rounded-full bg-white/30"
+          className="pv-vol vbar-vol"
         />
         <CtrlBtn label={`播放速度 ${media.rate}×`} onClick={cycleRate} wide>
           {media.rate}×
@@ -332,14 +322,14 @@ export default function VideoControls({
           <Captions size={18} strokeWidth={1.8} />
         </CtrlBtn>
         {subtitle && (
-          <span className="flex max-w-[160px] items-center gap-1 rounded bg-white/15 px-1.5 py-1 text-[11px] text-white/90">
-            <span className="truncate">{subtitle.name}</span>
+          <span className="vbar-sub">
+            <span className="u-truncate">{subtitle.name}</span>
             <button
               type="button"
               title="移除字幕"
               aria-label="移除字幕"
               onClick={onClearSubtitle}
-              className="shrink-0 rounded p-0.5 hover:bg-white/20"
+              className="vbar-sub-x"
             >
               <X size={12} />
             </button>

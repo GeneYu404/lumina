@@ -93,21 +93,21 @@ const HANDLES: { h: Handle; cursor: string; pos: (r: R) => CSSProperties }[] = [
 ];
 
 function HandleVisual({ h }: { h: Handle }) {
-  const base = 'absolute border-white drop-shadow-[0_0_2px_rgba(0,0,0,0.7)]';
+  const base = 'crop-handle-viz';
   switch (h) {
     case 'nw':
-      return <span className={cn(base, 'left-[10px] top-[10px] h-4 w-4 border-l-[3px] border-t-[3px]')} />;
+      return <span className={cn(base, 'crop-handle-viz--corner crop-handle-viz--nw')} />;
     case 'ne':
-      return <span className={cn(base, 'right-[10px] top-[10px] h-4 w-4 border-r-[3px] border-t-[3px]')} />;
+      return <span className={cn(base, 'crop-handle-viz--corner crop-handle-viz--ne')} />;
     case 'sw':
-      return <span className={cn(base, 'bottom-[10px] left-[10px] h-4 w-4 border-b-[3px] border-l-[3px]')} />;
+      return <span className={cn(base, 'crop-handle-viz--corner crop-handle-viz--sw')} />;
     case 'se':
-      return <span className={cn(base, 'bottom-[10px] right-[10px] h-4 w-4 border-b-[3px] border-r-[3px]')} />;
+      return <span className={cn(base, 'crop-handle-viz--corner crop-handle-viz--se')} />;
     case 'n':
     case 's':
-      return <span className="absolute left-1/2 top-1/2 h-[4px] w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_2px_rgba(0,0,0,0.7)]" />;
+      return <span className="crop-handle-viz--bar" />;
     default:
-      return <span className="absolute left-1/2 top-1/2 h-5 w-[4px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_2px_rgba(0,0,0,0.7)]" />;
+      return <span className="crop-handle-viz--bar crop-handle-viz--bar-v" />;
   }
 }
 
@@ -211,24 +211,24 @@ export default function CropOverlay({ item, scale, vp }: { item: ImageItem; scal
 
   return (
     <>
-      <div className="absolute z-10" style={{ left: vp.w / 2 - W / 2, top: vp.h / 2 - H / 2, width: W, height: H }}>
-        <div className="absolute inset-0 overflow-hidden">
+      <div className="crop-frame" style={{ left: vp.w / 2 - W / 2, top: vp.h / 2 - H / 2, width: W, height: H }}>
+        <div className="crop-clip">
           <div
-            className="absolute cursor-move"
+            className="crop-mask"
             style={{ left: px.x, top: px.y, width: px.w, height: px.h, boxShadow: '0 0 0 9999px rgba(0,0,0,0.55)' }}
             onPointerDown={startDrag('move')}
           >
-            <div className="absolute inset-0 border border-white/90" />
-            <div className="absolute bottom-0 left-1/3 top-0 w-px bg-white/45" />
-            <div className="absolute bottom-0 left-2/3 top-0 w-px bg-white/45" />
-            <div className="absolute left-0 right-0 top-1/3 h-px bg-white/45" />
-            <div className="absolute left-0 right-0 top-2/3 h-px bg-white/45" />
+            <div className="crop-border" />
+            <div className="crop-grid crop-grid--v" style={{ left: "calc(100% / 3)" }} />
+            <div className="crop-grid crop-grid--v" style={{ left: "calc(100% / 3 * 2)" }} />
+            <div className="crop-grid crop-grid--h" style={{ top: "calc(100% / 3)" }} />
+            <div className="crop-grid crop-grid--h" style={{ top: "calc(100% / 3 * 2)" }} />
           </div>
         </div>
         {HANDLES.map(({ h, cursor, pos }) => (
           <div
             key={h}
-            className="absolute z-10 h-6 w-6 touch-none"
+            className="crop-handle"
             style={{ ...pos(px), cursor }}
             onPointerDown={startDrag(h)}
           >
@@ -236,7 +236,7 @@ export default function CropOverlay({ item, scale, vp }: { item: ImageItem; scal
           </div>
         ))}
         <div
-          className="pointer-events-none absolute rounded bg-black/65 px-1.5 py-0.5 text-[11px] tabular-nums text-white"
+          className="crop-size"
           style={{ left: px.x + 6, top: Math.max(px.y + 6, 6) }}
         >
           {Math.round(frac.w * ew)} × {Math.round(frac.h * eh)}
@@ -245,7 +245,7 @@ export default function CropOverlay({ item, scale, vp }: { item: ImageItem; scal
 
       <div
         data-no-pan
-        className="win-scroll absolute bottom-3 left-1/2 z-20 flex max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-1 overflow-x-auto rounded-lg border border-stroke bg-acrylic p-1 shadow-flyout backdrop-blur-2xl"
+        className="crop-bar win-scroll"
         onDoubleClick={(e) => e.stopPropagation()}
       >
         {ASPECTS.map((a) => (
@@ -253,22 +253,19 @@ export default function CropOverlay({ item, scale, vp }: { item: ImageItem; scal
             key={a.key}
             type="button"
             onClick={() => chooseAspect(a.key)}
-            className={cn(
-              'h-8 shrink-0 whitespace-nowrap rounded-md px-2.5 text-[13px] transition-colors',
-              aspect === a.key ? 'bg-accent-soft text-accent' : 'text-fg hover:bg-subtle',
-            )}
+            className={cn('crop-aspect', aspect === a.key ? 'crop-aspect--on' : 'crop-aspect--off')}
           >
             {a.label}
           </button>
         ))}
-        <div className="mx-1 h-5 w-px shrink-0 bg-stroke" />
+        <div className="sep" />
         <ToolButton icon={RotateCcw} label="向左旋转" size="sm" tipSide="top" noTip onClick={() => S().rotate(item.id, -90)} />
         <ToolButton icon={RotateCw} label="向右旋转" size="sm" tipSide="top" noTip onClick={() => S().rotate(item.id, 90)} />
-        <div className="mx-1 h-5 w-px shrink-0 bg-stroke" />
-        <Button className="shrink-0 px-3" onClick={() => S().setCropMode(false)}>
+        <div className="sep" />
+        <Button className="btn--px3 btn--shrink" onClick={() => S().setCropMode(false)}>
           <X size={14} /> 取消
         </Button>
-        <Button variant="accent" className="shrink-0 px-3" disabled={busy} onClick={apply}>
+        <Button variant="accent" className="btn--px3 btn--shrink" disabled={busy} onClick={apply}>
           <Check size={14} /> {busy ? '处理中…' : '应用'}
         </Button>
       </div>

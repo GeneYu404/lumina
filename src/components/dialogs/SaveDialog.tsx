@@ -71,30 +71,30 @@ function Inner({ item, onClose }: { item: ImageItem; onClose: () => void }) {
   const ext = format === 'image/jpeg' ? 'jpg' : format === 'image/png' ? 'png' : 'webp';
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="save-body">
       {item.remote && (
-        <div className="rounded-md border border-[#f7630c]/40 bg-[#f7630c]/10 px-3 py-2 text-xs leading-5 text-fg">
+        <div className="save-warn">
           这是一张在线示例图片，受浏览器跨域限制可能无法导出。请打开本地图片后再试。
         </div>
       )}
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[13px] text-fg">文件名</span>
-        <div className="flex items-center rounded-[5px] border border-stroke bg-card focus-within:border-accent">
+      <label className="save-field">
+        <span className="save-label">文件名</span>
+        <div className="save-box">
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') save();
             }}
-            className="h-8 min-w-0 flex-1 bg-transparent px-3 text-[13px] text-fg outline-none"
+            className="save-input"
             autoFocus
           />
-          <span className="pr-3 text-[13px] text-fg3">.{ext}</span>
+          <span className="save-ext">.{ext}</span>
         </div>
       </label>
 
-      <div className="flex flex-col gap-1.5">
-        <span className="text-[13px] text-fg">格式</span>
+      <div className="save-field">
+        <span className="save-label">格式</span>
         <Segmented
           value={format}
           options={[
@@ -103,47 +103,44 @@ function Inner({ item, onClose }: { item: ImageItem; onClose: () => void }) {
             { value: 'image/webp' as SaveFormat, label: 'WebP' },
           ]}
           onChange={setFormat}
-          className="self-start"
+          className="segmented--start"
         />
       </div>
 
       {format !== 'image/png' && (
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center justify-between text-[13px]">
-            <span className="text-fg">质量</span>
-            <span className="tabular-nums text-fg2">{quality}%</span>
+        <div className="save-field save-field--tight">
+          <div className="adj-head">
+            <span className="u-fg">质量</span>
+            <span className="save-qty">{quality}%</span>
           </div>
           <Slider ariaLabel="质量" min={10} max={100} value={quality} onChange={setQuality} />
         </div>
       )}
 
-      <div className="flex flex-col gap-2">
-        <span className="text-[13px] text-fg">尺寸</span>
-        <div className="flex flex-wrap gap-1.5">
+      <div className="save-field save-field--wide">
+        <span className="save-label">尺寸</span>
+        <div className="save-sizes">
           {(['100', '75', '50', '25', 'custom'] as SizeMode[]).map((m) => (
             <button
               key={m}
               type="button"
               onClick={() => setSizeMode(m)}
-              className={cn(
-                'h-8 rounded-[5px] border px-3 text-[13px] transition-colors',
-                sizeMode === m ? 'border-transparent bg-accent text-on-accent' : 'border-stroke bg-card text-fg hover:bg-card-hover',
-              )}
+              className={cn('save-size', sizeMode === m ? 'save-size--on' : 'save-size--off')}
             >
               {m === 'custom' ? '自定义' : m === '100' ? '原始大小' : `${m}%`}
             </button>
           ))}
         </div>
         {sizeMode === 'custom' && (
-          <div className="flex items-center gap-2">
-            <label className="flex items-center gap-2 text-xs text-fg2">
+          <div className="save-dims-row">
+            <label className="save-dim">
               宽
               <input
                 type="number"
                 min={1}
                 value={cw}
                 onChange={(e) => setWidth(Number(e.target.value))}
-                className="h-8 w-24 rounded-[5px] border border-stroke bg-card px-2 text-[13px] text-fg outline-none focus:border-accent"
+                className="save-num"
               />
             </label>
             <button
@@ -151,23 +148,23 @@ function Inner({ item, onClose }: { item: ImageItem; onClose: () => void }) {
               aria-label={lock ? '取消锁定宽高比' : '锁定宽高比'}
               title={lock ? '已锁定宽高比' : '未锁定宽高比'}
               onClick={() => setLock((l) => !l)}
-              className={cn('mt-0.5 flex h-8 w-8 items-center justify-center rounded-md hover:bg-subtle', lock ? 'text-accent' : 'text-fg2')}
+              className={cn('save-lock', lock ? 'save-lock--on' : 'save-lock--off')}
             >
               {lock ? <Lock size={15} /> : <LockOpen size={15} />}
             </button>
-            <label className="flex items-center gap-2 text-xs text-fg2">
+            <label className="save-dim">
               高
               <input
                 type="number"
                 min={1}
                 value={ch}
                 onChange={(e) => setHeight(Number(e.target.value))}
-                className="h-8 w-24 rounded-[5px] border border-stroke bg-card px-2 text-[13px] text-fg outline-none focus:border-accent"
+                className="save-num"
               />
             </label>
           </div>
         )}
-        <div className={cn('text-xs', tooBig ? 'text-[#ff99a4]' : 'text-fg2')}>
+        <div className={cn('save-out', tooBig && 'save-out--big')}>
           输出：{out.w} × {out.h} 像素{tooBig ? '（尺寸过大，请减小）' : ''}
         </div>
       </div>
@@ -178,7 +175,7 @@ function Inner({ item, onClose }: { item: ImageItem; onClose: () => void }) {
         </Checkbox>
       )}
 
-      <div className="grid grid-cols-2 gap-2 pt-1">
+      <div className="save-actions">
         <Button variant="accent" disabled={saving || tooBig || !dims.w} onClick={save}>
           {saving ? '正在保存…' : '保存'}
         </Button>

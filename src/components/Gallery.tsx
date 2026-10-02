@@ -37,29 +37,23 @@ const Cell = memo(function Cell({
         S().goTo(item.id);
         onMenu(item.id, { x: e.clientX, y: e.clientY });
       }}
-      className={cn(
-        'group/cell relative aspect-square overflow-hidden rounded-md bg-card outline-offset-2 transition-shadow',
-        active ? 'outline-2 outline-accent' : 'hover:shadow-flyout',
-      )}
+      className={cn('cell', active ? 'cell--active' : 'cell--off')}
       style={{ contentVisibility: 'auto', containIntrinsicSize: `${size}px ${size}px` }}
     >
       <Thumb item={item} size={size} cover={cover} />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-black/70 to-transparent px-2 pb-1.5 pt-6 text-left text-[12px] text-white opacity-0 transition-opacity group-hover/cell:opacity-100">
-        <div className="truncate">{item.name}</div>
+      <div className="cell-label">
+        <div className="u-truncate">{item.name}</div>
         {item.width > 0 && (
-          <div className="text-[11px] text-white/70">{item.width} × {item.height}</div>
+          <div className="cell-dims">{item.width} × {item.height}</div>
         )}
       </div>
       <button
         type="button"
         aria-label={item.favorite ? '取消收藏' : '收藏'}
         onClick={(e) => { e.stopPropagation(); S().toggleFavorite(item.id); }}
-        className={cn(
-          'absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-md bg-black/35 text-white backdrop-blur transition-opacity hover:bg-black/55',
-          item.favorite ? 'opacity-100' : 'opacity-0 group-hover/cell:opacity-100',
-        )}
+        className={cn('cell-fav', item.favorite ? 'cell-fav--on' : 'cell-fav--off')}
       >
-        <Heart size={15} strokeWidth={2} className={item.favorite ? 'fill-[#e81123] text-[#e81123]' : ''} />
+        <Heart size={15} strokeWidth={2} className={item.favorite ? 'fav-on' : ''} />
       </button>
     </div>
   );
@@ -184,19 +178,19 @@ export default function Gallery() {
       : [{ key: 'one', title: kind === 'video' ? '视频' : '图片', list: visible }];
 
   return (
-    <div ref={ref} className="win-scroll relative h-full overflow-y-auto bg-viewer p-4">
+    <div ref={ref} className="gallery win-scroll">
       {/* 搜索与筛选 */}
-      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-stroke bg-layer p-2">
-        <div className="flex h-8 min-w-[220px] flex-1 items-center gap-2 rounded-[5px] border border-stroke bg-card px-2.5 focus-within:border-accent">
-          <Search size={15} className="shrink-0 text-fg3" />
+      <div className="gallery-bar">
+        <div className="gallery-search">
+          <Search size={15} className="u-shrink-0 u-fg3" />
           <input
             value={query}
             onChange={(e) => setFilter({ query: e.target.value })}
             placeholder="搜索文件名、扩展名或路径…"
-            className="h-full min-w-0 flex-1 bg-transparent text-[13px] text-fg outline-none placeholder:text-fg3"
+            className="gallery-search-input"
           />
           {query && (
-            <button type="button" aria-label="清除搜索" className="rounded p-0.5 text-fg3 hover:bg-subtle" onClick={() => setFilter({ query: '' })}>
+            <button type="button" aria-label="清除搜索" className="gallery-clear" onClick={() => setFilter({ query: '' })}>
               <X size={13} />
             </button>
           )}
@@ -206,7 +200,7 @@ export default function Gallery() {
           aria-label="文件夹范围"
           value={folder}
           onChange={(e) => setFilter({ folder: e.target.value })}
-          className="h-8 max-w-[220px] rounded-[5px] border border-stroke bg-card px-2 text-[13px] text-fg outline-none"
+          className="gallery-select gallery-select--w"
         >
           <option value="">全部文件夹</option>
           {folders.map((f) => (
@@ -220,7 +214,7 @@ export default function Gallery() {
           aria-label="时间范围"
           value={time}
           onChange={(e) => setFilter({ time: e.target.value as GalleryTime })}
-          className="h-8 rounded-[5px] border border-stroke bg-card px-2 text-[13px] text-fg outline-none"
+          className="gallery-select"
         >
           {(Object.keys(TIME_LABEL) as GalleryTime[]).map((t) => (
             <option key={t} value={t}>{TIME_LABEL[t]}</option>
@@ -229,15 +223,15 @@ export default function Gallery() {
       </div>
 
       {results.length === 0 ? (
-        <div className="flex h-[60%] flex-col items-center justify-center gap-3 text-center text-fg2">
+        <div className="gallery-empty">
           <Search size={40} strokeWidth={1.2} />
-          <div className="text-base font-medium text-fg">没有匹配的文件</div>
-          <div className="text-xs">换个关键词，或放宽文件夹 / 时间筛选。</div>
+          <div className="gallery-empty-title">没有匹配的文件</div>
+          <div className="gallery-empty-desc">换个关键词，或放宽文件夹 / 时间筛选。</div>
           {(query || kind !== 'all' || folder || time !== 'all') && (
             <button
               type="button"
               onClick={() => setFilter({ query: '', kind: 'all', folder: '', time: 'all' })}
-              className="mt-1 rounded-md border border-stroke bg-card px-3 py-1.5 text-[13px] text-fg hover:bg-card-hover"
+              className="gallery-empty-btn"
             >
               清除全部筛选
             </button>
@@ -245,14 +239,14 @@ export default function Gallery() {
         </div>
       ) : (
         sections.map((sec) => (
-          <div key={sec.key} className="mb-5">
-            <h3 className="mb-2 flex items-center gap-2 text-[13px] font-semibold text-fg2">
+          <div key={sec.key} className="gallery-section">
+            <h3 className="gallery-section-title">
               {sec.title}
-              <span className="text-xs font-normal text-fg3">
+              <span className="gallery-section-count">
                 {sec.key === 'img' ? imageCount : sec.key === 'vid' ? videoCount : results.length} 项
               </span>
             </h3>
-            <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${size}px, 1fr))` }}>
+            <div className="gallery-grid" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${size}px, 1fr))` }}>
               {sec.list.map((it) => (
                 <Cell key={it.id} item={it} active={it.id === currentId} size={size} cover={cover} onMenu={onMenu} />
               ))}
@@ -262,12 +256,12 @@ export default function Gallery() {
       )}
 
       {last > 0 && (
-        <div className="flex items-center justify-center gap-3 pb-2 text-xs text-fg2">
-          <button type="button" disabled={shownPage <= 0} onClick={() => setPage(shownPage - 1)} className="rounded-md border border-stroke bg-card px-3 py-1 hover:bg-card-hover disabled:opacity-40">
+        <div className="gallery-pager">
+          <button type="button" disabled={shownPage <= 0} onClick={() => setPage(shownPage - 1)} className="pager-btn">
             上一页
           </button>
-          <span className="tabular-nums">{shownPage + 1} / {last + 1}</span>
-          <button type="button" disabled={shownPage >= last} onClick={() => setPage(shownPage + 1)} className="rounded-md border border-stroke bg-card px-3 py-1 hover:bg-card-hover disabled:opacity-40">
+          <span className="u-tabular">{shownPage + 1} / {last + 1}</span>
+          <button type="button" disabled={shownPage >= last} onClick={() => setPage(shownPage + 1)} className="pager-btn">
             下一页
           </button>
         </div>
@@ -284,16 +278,13 @@ function SegmentedLike({ value, onChange }: { value: GalleryKind; onChange: (v: 
     { value: 'video', label: '仅视频' },
   ];
   return (
-    <div className="inline-flex shrink-0 rounded-md border border-stroke bg-card p-0.5">
+    <div className="segmented">
       {opts.map((o) => (
         <button
           key={o.value}
           type="button"
           onClick={() => onChange(o.value)}
-          className={cn(
-            'h-7 whitespace-nowrap rounded-[4px] px-3 text-[13px] transition-colors',
-            o.value === value ? 'bg-accent text-on-accent' : 'text-fg hover:bg-subtle',
-          )}
+          className={cn('seg-item', o.value === value ? 'seg-item--on' : 'seg-item--off')}
         >
           {o.label}
         </button>

@@ -531,8 +531,8 @@ export default function Viewer() {
     <div
       ref={ref}
       className={cn(
-        'group/viewer absolute inset-0 touch-none select-none overflow-hidden',
-        pannable && !cropMode && (grabbing ? 'cursor-grabbing' : 'cursor-grab'),
+        'viewer',
+        pannable && !cropMode && (grabbing ? 'viewer--grabbing' : 'viewer--grab'),
       )}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -544,14 +544,14 @@ export default function Viewer() {
       <ViewerBackground mode={bgMode} thumb={item?.thumb ?? null} />
 
       {item && !item.error && item.kind === 'video' && (
-        <div key={`${item.id}|${item.url}`} className="absolute inset-0 flex items-center justify-center p-4">
+        <div key={`${item.id}|${item.url}`} className="video-stage">
           <video
             ref={videoRef}
             id="pv-video"
             src={item.url}
             playsInline
             preload="metadata"
-            className="max-h-full max-w-full rounded-md shadow-2xl outline-none"
+            className="video-el"
             style={{ opacity: loaded ? 1 : 0, transition: 'opacity .2s ease' }}
             onClick={toggleVideoPlay}
             onDoubleClick={() => toggleImmersive()}
@@ -616,7 +616,7 @@ export default function Viewer() {
             onClearSubtitle={() => applySub(null)}
           />
           {(pcmActive || pcmNotice) && (
-            <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full border border-stroke bg-card/95 px-3 py-1 text-[11px] text-fg2 shadow-flyout backdrop-blur">
+            <div className="video-notice">
               {pcmNotice ??
                 `此音轨（${codecLabel(audioCodec ?? undefined)}）本机无法直接解码，正在用内置 FFmpeg 解码`}
             </div>
@@ -632,7 +632,7 @@ export default function Viewer() {
               src={item.url}
               mime={animMime}
               paused={slideshow || cropMode}
-              className={cn('block max-w-none', hasDims && 'h-full w-full')}
+              className={cn('media-base', hasDims && 'media-fill')}
               style={{
                 filter: comparing ? 'none' : cssFilter(item.adjust, blurNatural(item.adjust, item.width, item.height) * scale),
                 imageRendering: settings.pixelated && scale >= 3 ? 'pixelated' : 'auto',
@@ -645,7 +645,7 @@ export default function Viewer() {
             src={item.url}
             alt={item.name}
             draggable={false}
-            className={cn('block max-w-none', hasDims && 'h-full w-full')}
+            className={cn('media-base', hasDims && 'media-fill')}
             style={{
               filter: comparing ? 'none' : cssFilter(item.adjust, blurNatural(item.adjust, item.width, item.height) * scale),
               imageRendering: settings.pixelated && scale >= 3 ? 'pixelated' : 'auto',
@@ -677,14 +677,14 @@ export default function Viewer() {
           />
           )}
           {tc && (
-            <div className="pointer-events-none absolute inset-0" style={{ background: tc, mixBlendMode: 'soft-light', ...maskStyle }} />
+            <div className="media-overlay" style={{ background: tc, mixBlendMode: 'soft-light', ...maskStyle }} />
           )}
-          {vg && <div className="pointer-events-none absolute inset-0" style={{ background: vg, ...maskStyle }} />}
+          {vg && <div className="media-overlay" style={{ background: vg, ...maskStyle }} />}
         </div>
       )}
 
       {item && !loaded && !item.error && (
-        <div className="animate-fade-in pointer-events-none absolute inset-0 flex items-center justify-center" style={{ animationDelay: '250ms' }}>
+        <div className="viewer-loading" style={{ animationDelay: '250ms' }}>
           <Spinner size={36} />
         </div>
       )}
@@ -703,9 +703,9 @@ export default function Viewer() {
           onClick={() => S().setMode('gallery')}
           onDoubleClick={(e) => e.stopPropagation()}
           className={cn(
-            'absolute left-3 top-3 z-20 flex h-8 items-center gap-1 rounded-md border border-stroke px-2.5 text-[13px] text-fg shadow-flyout transition-colors hover:bg-card-hover focus-visible:opacity-100',
+            'viewer-back',
             // Over an animation a backdrop blur is re-computed every frame: go solid.
-            animated ? 'bg-card' : 'bg-acrylic backdrop-blur-xl',
+            animated ? 'is-solid' : 'is-glass',
           )}
         >
           <ChevronLeft size={15} strokeWidth={1.8} /> 返回
@@ -724,8 +724,8 @@ export default function Viewer() {
       )}
 
       {flashKey > 0 && item && hasDims && (
-        <div key={flashKey} className="animate-zoom-flash pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="rounded-lg bg-black/65 px-4 py-2 text-lg font-semibold tabular-nums text-white shadow-lg backdrop-blur">
+        <div key={flashKey} className="zoom-flash">
+          <div className="zoom-flash-badge">
             {formatZoom(scale)}
           </div>
         </div>
@@ -739,18 +739,18 @@ export default function Viewer() {
 }
 
 function ViewerBackground({ mode, thumb }: { mode: ViewerBg; thumb: string | null }) {
-  if (mode === 'black') return <div className="absolute inset-0 bg-black" />;
-  if (mode === 'white') return <div className="absolute inset-0 bg-white" />;
-  if (mode === 'checker') return <div className="bg-checker absolute inset-0" />;
+  if (mode === 'black') return <div className="bg-fill bg-black" />;
+  if (mode === 'white') return <div className="bg-fill bg-white" />;
+  if (mode === 'checker') return <div className="bg-fill bg-checker" />;
   return (
-    <div className="absolute inset-0 overflow-hidden bg-viewer">
+    <div className="viewer-bg">
       {mode === 'ambient' && thumb && (
         <img
           src={thumb}
           alt=""
           aria-hidden="true"
           draggable={false}
-          className="absolute inset-0 h-full w-full max-w-none scale-125 object-cover opacity-55 blur-[80px] saturate-150"
+          className="ambient-img"
         />
       )}
     </div>
@@ -768,10 +768,10 @@ function NavArrow({ side, onClick, solid }: { side: 'left' | 'right'; onClick: (
       onClick={onClick}
       onDoubleClick={(e) => e.stopPropagation()}
       className={cn(
-        'absolute top-1/2 z-10 flex h-16 w-10 -translate-y-1/2 items-center justify-center rounded-md border border-stroke text-fg opacity-0 shadow-flyout transition-opacity duration-200 hover:bg-card-hover focus-visible:opacity-100 group-hover/viewer:opacity-100',
         // Over an animation a backdrop blur is re-computed every frame: go solid.
-        solid ? 'bg-card' : 'bg-acrylic backdrop-blur-xl',
-        side === 'left' ? 'left-3' : 'right-3',
+        side === 'left' ? 'nav-arrow--left' : 'nav-arrow--right',
+        solid ? 'is-solid' : 'is-glass',
+        'nav-arrow',
       )}
     >
       <Icon size={22} strokeWidth={1.5} />
@@ -783,10 +783,10 @@ function ErrorState({ item }: { item: ImageItem }) {
   const ext = extOf(item.name);
   const special = ['heic', 'heif', 'tif', 'tiff', 'jxl'].includes(ext);
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center text-fg2">
+    <div className="viewer-error">
       <ImageOff size={52} strokeWidth={1.1} />
-      <div className="text-base font-medium text-fg">无法显示此图片</div>
-      <div className="max-w-sm text-xs leading-5">
+      <div className="viewer-error-title">无法显示此图片</div>
+      <div className="viewer-error-desc">
         “{item.name}” 可能已损坏，或者当前浏览器不支持此格式
         {special ? `（.${ext} 格式需要浏览器原生支持）` : ''}。
       </div>
@@ -853,13 +853,10 @@ function Minimap({
   return (
     <div
       data-no-pan
-      className={cn(
-        'animate-fade-in absolute bottom-3 right-3 z-10 rounded-lg border border-stroke p-1.5 shadow-flyout',
-        solid ? 'bg-card' : 'bg-acrylic backdrop-blur-xl',
-      )}
+      className={cn('minimap', solid ? 'is-solid' : 'is-glass')}
       onDoubleClick={(e) => e.stopPropagation()}
     >
-      <div className="relative cursor-crosshair overflow-hidden rounded bg-subtle" style={{ width: mw, height: mh }} onPointerDown={onPointerDown}>
+      <div className="minimap-canvas" style={{ width: mw, height: mh }} onPointerDown={onPointerDown}>
         {/* Static thumbnail only — the original would be one more decoder of an
             animation. Falling back to the full image is a deliberate second
             choice: an empty grey rectangle is worse than a re-decode, and the
@@ -869,7 +866,7 @@ function Minimap({
           src={item.thumb || item.url}
           alt=""
           draggable={false}
-          className="pointer-events-none absolute left-1/2 top-1/2 max-w-none"
+          className="minimap-img"
           style={{
             width: iw,
             height: ih,
@@ -880,7 +877,7 @@ function Minimap({
         />
         )}
         <div
-          className="pointer-events-none absolute rounded-[2px] border-2 border-accent"
+          className="minimap-rect"
           style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h, boxShadow: '0 0 0 999px rgba(0,0,0,0.45)' }}
         />
       </div>

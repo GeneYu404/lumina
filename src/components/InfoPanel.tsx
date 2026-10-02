@@ -23,7 +23,6 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { readMediaInfo } from '../native';
 import { useCurrent, useStore } from '../store';
 import type { AudioStreamInfo, ImageItem, MediaInfo } from '../types';
-import { cn } from '../utils/cn';
 import { aspectLabel, extOf, formatBitrate, formatBytes, formatDate, formatDuration, formatExposure, formatFps, typeLabel } from '../utils/format';
 import { computeStats, isAdjusted, normRot, type ImageStats } from '../utils/image';
 
@@ -164,9 +163,9 @@ function useStats(url: string | null, remote: boolean): StatsState {
 
 export function PanelHeader({ title, onClose }: { title: string; onClose: () => void }) {
   return (
-    <div className="flex h-12 shrink-0 items-center justify-between pl-4 pr-2">
-      <h2 className="text-[15px] font-semibold">{title}</h2>
-      <button type="button" aria-label="关闭面板" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-md text-fg2 hover:bg-subtle">
+    <div className="panel-head">
+      <h2 className="panel-title">{title}</h2>
+      <button type="button" aria-label="关闭面板" onClick={onClose} className="panel-close">
         <X size={16} />
       </button>
     </div>
@@ -175,9 +174,9 @@ export function PanelHeader({ title, onClose }: { title: string; onClose: () => 
 
 export function Section({ title, children, right }: { title: string; children: ReactNode; right?: ReactNode }) {
   return (
-    <section className="border-t border-stroke py-3 first:border-t-0">
-      <div className="mb-1.5 flex items-center justify-between">
-        <h3 className="text-[13px] font-semibold text-fg">{title}</h3>
+    <section className="section">
+      <div className="section-head">
+        <h3 className="section-title">{title}</h3>
         {right}
       </div>
       {children}
@@ -187,11 +186,11 @@ export function Section({ title, children, right }: { title: string; children: R
 
 function Row({ icon: Icon, label, children }: { icon: LucideIcon; label: string; children: ReactNode }) {
   return (
-    <div className="flex gap-3 py-1.5">
-      <Icon size={16} strokeWidth={1.6} className="mt-0.5 shrink-0 text-fg2" />
-      <div className="min-w-0 flex-1">
-        <div className="text-[11px] text-fg3">{label}</div>
-        <div className="break-words text-[13px] leading-5 text-fg">{children}</div>
+    <div className="row">
+      <Icon size={16} strokeWidth={1.6} className="row-icon" />
+      <div className="row-body">
+        <div className="row-label">{label}</div>
+        <div className="row-value">{children}</div>
       </div>
     </div>
   );
@@ -210,8 +209,8 @@ function Histogram({ stats }: { stats: ImageStats }) {
     return d + ' L255,100 Z';
   };
   return (
-    <svg viewBox="0 0 255 100" preserveAspectRatio="none" className="h-24 w-full rounded-md border border-stroke bg-card">
-      <path d={path(stats.l)} fill="currentColor" className="text-fg3" opacity={0.35} />
+    <svg viewBox="0 0 255 100" preserveAspectRatio="none" className="histogram">
+      <path d={path(stats.l)} fill="currentColor" className="histogram-luma" opacity={0.35} />
       <path d={path(stats.r)} fill="rgba(239,68,68,0.45)" />
       <path d={path(stats.g)} fill="rgba(34,197,94,0.42)" />
       <path d={path(stats.b)} fill="rgba(59,130,246,0.45)" />
@@ -298,21 +297,21 @@ export default function InfoPanel() {
   };
 
   return (
-    <aside className="animate-panel-in flex w-[320px] shrink-0 flex-col border-l border-stroke bg-layer max-md:absolute max-md:inset-y-0 max-md:right-0 max-md:z-30 max-md:bg-app max-md:shadow-2xl">
+    <aside className="panel">
       <PanelHeader title="文件信息" onClose={() => S().setPanel(null)} />
-      <div className="win-scroll min-h-0 flex-1 overflow-y-auto px-4 pb-6">
-        <div className="flex items-start gap-3 pb-3">
-          <div className="min-w-0 flex-1">
-            <div className="break-all text-[15px] font-semibold leading-6">{item.name}</div>
-            {edits.length > 0 && <div className="mt-0.5 text-xs text-accent">{edits.join(' · ')}</div>}
+      <div className="panel-body win-scroll">
+        <div className="file-head">
+          <div className="file-body">
+            <div className="file-name">{item.name}</div>
+            {edits.length > 0 && <div className="file-edits">{edits.join(' · ')}</div>}
           </div>
           <button
             type="button"
             aria-label={item.favorite ? '取消收藏' : '收藏'}
             onClick={() => S().toggleFavorite(item.id)}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md hover:bg-subtle"
+            className="file-fav"
           >
-            <Heart size={17} className={item.favorite ? 'fill-[#e81123] text-[#e81123]' : 'text-fg2'} />
+            <Heart size={17} className={item.favorite ? 'fav-on' : 'u-fg2'} />
           </button>
         </div>
 
@@ -329,7 +328,7 @@ export default function InfoPanel() {
             {item.width ? (
               <>
                 {item.width} × {item.height} 像素
-                <span className="text-fg2">
+                <span className="u-fg2">
                   {' '}
                   · {((item.width * item.height) / 1e6).toFixed(1)} MP · {aspectLabel(item.width, item.height)}
                 </span>
@@ -347,13 +346,13 @@ export default function InfoPanel() {
           {item.credit && (
             <Row icon={User} label="摄影师">
               {item.credit}
-              <span className="text-fg2"> · Pexels</span>
+              <span className="u-fg2"> · Pexels</span>
             </Row>
           )}
         </Section>
 
         {isVideo && (
-        <Section title="视频" right={mediaLoading ? <span className="text-[11px] text-fg3">读取中…</span> : undefined}>
+        <Section title="视频" right={mediaLoading ? <span className="section-note">读取中…</span> : undefined}>
           <Row icon={Clock} label="时长">
             {formatDuration(durationSec)}
           </Row>
@@ -363,7 +362,7 @@ export default function InfoPanel() {
           {vcodec && (
             <Row icon={Video} label="视频编码">
               {vcodec}
-              {vres && <span className="text-fg2"> · {vres}</span>}
+              {vres && <span className="u-fg2"> · {vres}</span>}
             </Row>
           )}
           {fps !== null && (
@@ -382,13 +381,13 @@ export default function InfoPanel() {
             </Row>
           )}
           {!media && !mediaLoading && !durationSec && (
-            <p className="py-1 text-xs leading-5 text-fg3">暂无详情：播放一次视频即可读取时长。</p>
+            <p className="muted-note">暂无详情：播放一次视频即可读取时长。</p>
           )}
         </Section>
         )}
 
         {!isVideo && (
-        <Section title="相机" right={loading ? <span className="text-[11px] text-fg3">读取中…</span> : undefined}>
+        <Section title="相机" right={loading ? <span className="section-note">读取中…</span> : undefined}>
           {hasCamera ? (
             <>
               {camera && (
@@ -402,9 +401,9 @@ export default function InfoPanel() {
                 </Row>
               )}
               {params.length > 0 && (
-                <div className="my-1.5 flex flex-wrap gap-1.5 pl-7">
+                <div className="exif-chips">
                   {params.map((p) => (
-                    <span key={p} className="rounded-md border border-stroke bg-card px-2 py-0.5 text-xs tabular-nums">
+                    <span key={p} className="exif-chip">
                       {p}
                     </span>
                   ))}
@@ -427,7 +426,7 @@ export default function InfoPanel() {
               )}
             </>
           ) : (
-            <p className="py-1 text-xs leading-5 text-fg3">
+            <p className="muted-note">
               {loading ? '正在读取 EXIF 信息…' : item.remote ? '在线图片不提供 EXIF 信息。' : '此图片不包含相机 (EXIF) 信息。'}
             </p>
           )}
@@ -443,7 +442,7 @@ export default function InfoPanel() {
               href={`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=15/${lat}/${lon}`}
               target="_blank"
               rel="noreferrer"
-              className="ml-7 text-[13px] text-accent hover:underline"
+              className="panel-link"
             >
               在地图中查看 ↗
             </a>
@@ -455,7 +454,7 @@ export default function InfoPanel() {
           {statsState.status === 'done' && stats ? (
             <Histogram stats={stats} />
           ) : (
-            <div className="flex h-24 items-center justify-center rounded-md border border-dashed border-stroke text-xs text-fg3">
+            <div className="histogram-empty">
               {statsState.status === 'skipped'
                 ? '在线图片无法分析'
                 : statsState.status === 'error'
@@ -467,21 +466,21 @@ export default function InfoPanel() {
         )}
 
         {!isVideo && stats && stats.palette.length > 0 && (
-          <Section title="主色调" right={<Palette size={14} className="text-fg3" />}>
-            <div className="grid grid-cols-6 gap-1.5">
+          <Section title="主色调" right={<Palette size={14} className="u-fg3" />}>
+            <div className="palette">
               {stats.palette.map((c) => (
                 <button
                   key={c}
                   type="button"
                   title={`${c}（点击复制）`}
                   onClick={() => copyHex(c)}
-                  className="group/sw flex flex-col items-center gap-1"
+                  className="palette-item"
                 >
                   <span
-                    className={cn('h-9 w-full rounded-md border border-stroke transition-transform group-hover/sw:scale-105')}
+                    className="palette-swatch"
                     style={{ background: c }}
                   />
-                  <span className="font-mono text-[10px] uppercase text-fg3">{copied === c ? '已复制' : c.slice(1)}</span>
+                  <span className="palette-hex">{copied === c ? '已复制' : c.slice(1)}</span>
                 </button>
               ))}
             </div>

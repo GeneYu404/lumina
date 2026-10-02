@@ -17,7 +17,7 @@ const fromSlider = (v: number) => {
 };
 
 function Dot() {
-  return <span className="h-1 w-1 shrink-0 rounded-full bg-fg3" />;
+  return <span className="status-dot" />;
 }
 
 export default function StatusBar() {
@@ -48,42 +48,42 @@ export default function StatusBar() {
   ];
 
   return (
-    <div className="flex h-9 shrink-0 items-center gap-3 border-t border-stroke bg-app px-3 text-xs text-fg2">
+    <div className="statusbar">
       {mode === 'viewer' && item ? (
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="shrink-0 tabular-nums text-fg">
+        <div className="status-left">
+          <span className="status-idx">
             {index + 1} / {total}
           </span>
           {item.width > 0 && (
             <>
               <Dot />
-              <span className="shrink-0 tabular-nums">
+              <span className="status-meta">
                 {item.width} × {item.height}
               </span>
             </>
           )}
           {item.size > 0 && (
-            <span className="hidden shrink-0 items-center gap-2.5 sm:flex">
+            <span className="status-size">
               <Dot />
               {formatBytes(item.size)}
             </span>
           )}
-          <span className="hidden min-w-0 items-center gap-2.5 lg:flex">
+          <span className="status-path">
             <Dot />
-            <span className="truncate">{item.path}</span>
+            <span className="u-truncate">{item.path}</span>
           </span>
           {isEdited(item) && (
-            <span className="hidden shrink-0 rounded bg-accent-soft px-1.5 py-0.5 text-[11px] text-accent md:inline">已编辑</span>
+            <span className="status-edited">已编辑</span>
           )}
         </div>
       ) : (
-        <span className="truncate">
+        <span className="status-note">
           {total} 项{mode === 'gallery' && total !== allCount ? `（共 ${allCount} 项）` : ''}
           {favCount ? ` · ${favCount} 个收藏` : ''}
         </span>
       )}
 
-      <div className="ml-auto flex shrink-0 items-center gap-1">
+      <div className="status-right">
         {mode === 'viewer' ? (
           <>
             <ToolButton
@@ -99,7 +99,7 @@ export default function StatusBar() {
             <ToolButton icon={Minus} label="缩小" size="sm" tipSide="top" onClick={() => S().zoomStep(-1)} />
             <Slider
               ariaLabel="缩放"
-              className="hidden w-28 sm:block"
+              className="slider--zoom"
               min={0}
               max={1000}
               value={toSlider(scale)}
@@ -109,7 +109,7 @@ export default function StatusBar() {
             <button
               type="button"
               onClick={(e) => zoomMenu.toggle(e.currentTarget)}
-              className={cn('h-7 min-w-[56px] rounded-md px-1.5 tabular-nums text-fg hover:bg-subtle', zoomMenu.open && 'bg-subtle')}
+              className={cn('zoom-readout', zoomMenu.open && 'zoom-readout--open')}
             >
               {formatZoom(scale)}
             </button>
@@ -125,7 +125,7 @@ export default function StatusBar() {
         ) : (
           <>
             <Segmented
-              className="hidden sm:inline-flex"
+              className="tool-hide-sm"
               value={cover ? 'cover' : 'contain'}
               options={[
                 { value: 'cover', label: '方形' },
@@ -133,18 +133,18 @@ export default function StatusBar() {
               ]}
               onChange={(v) => S().setSetting('galleryCover', v === 'cover')}
             />
-            <Sep className="hidden sm:block" />
-            <ImageIcon size={12} className="text-fg3" />
+            <Sep className="sep--sm" />
+            <ImageIcon size={12} className="u-fg3" />
             <Slider
               ariaLabel="缩略图大小"
-              className="w-28"
+              className="slider--w28"
               min={96}
               max={320}
               step={8}
               value={thumbSize}
               onChange={(v) => S().setSetting('thumbSize', v)}
             />
-            <ImageIcon size={17} className="text-fg3" />
+            <ImageIcon size={17} className="u-fg3" />
           </>
         )}
       </div>

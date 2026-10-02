@@ -113,23 +113,23 @@ export default function PrintDialog() {
   };
 
   return (
-    <div className="animate-fade-in fixed inset-0 z-[900] flex items-center justify-center bg-black/35 p-4" onPointerDown={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <div className="animate-dialog-in flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-stroke bg-dialog text-fg shadow-dialog">
-        <div className="flex items-center justify-between px-6 pb-3 pt-5">
-          <h2 className="text-xl font-semibold">打印</h2>
-          <button type="button" aria-label="关闭" onClick={close} className="flex h-8 w-8 items-center justify-center rounded-md text-fg2 hover:bg-subtle">
+    <div className="dialog-overlay" onPointerDown={(e) => { if (e.target === e.currentTarget) close(); }}>
+      <div className="dialog print">
+        <div className="collage-head">
+          <h2 className="collage-title">打印</h2>
+          <button type="button" aria-label="关闭" onClick={close} className="dialog-close">
             <X size={16} />
           </button>
         </div>
-        <div className="grid min-h-0 flex-1 grid-cols-[1fr_320px] gap-6 overflow-hidden px-6 pb-5">
-          <div className="flex min-h-0 flex-col gap-2">
-            <div className="flex items-center justify-between text-[13px] font-semibold text-fg2">
+        <div className="print-body">
+          <div className="print-left">
+            <div className="print-head">
               <span>预览 · 第 {page + 1} / {pageCount} 页</span>
-              <span className="font-normal text-fg3">{photos.length} 张 · {totalSheets} 张纸</span>
+              <span className="print-head-note">{photos.length} 张 · {totalSheets} 张纸</span>
             </div>
-            <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-viewer p-6">
+            <div className="print-stage">
               <div
-                className="flex max-h-full flex-col shadow-dialog"
+                className="print-page"
                 style={{
                   aspectRatio: `${pw} / ${ph}`,
                   height: '100%',
@@ -140,22 +140,22 @@ export default function PrintDialog() {
                 }}
               >
                 {header && (
-                  <div className="mb-1 flex justify-between text-[8px] opacity-70">
+                  <div className="print-page-head">
                     <span>拾光 Lumina</span>
                     <span>预览</span>
                   </div>
                 )}
-                <div className="grid min-h-0 flex-1 gap-1" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)`, gridTemplateRows: `repeat(${rows}, 1fr)` }}>
+                <div className="print-grid" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)`, gridTemplateRows: `repeat(${rows}, 1fr)` }}>
                   {preview.map((it) => (
-                    <figure key={it.id} className="m-0 flex min-h-0 flex-col items-center justify-center">
+                    <figure key={it.id} className="print-cell">
                       <img
                         src={it.thumb ?? it.url}
                         alt=""
-                        className={cn('max-h-full max-w-full', fit === 'cover' ? 'h-full w-full object-cover' : fit === 'contain' ? 'object-contain' : 'object-scale-down')}
+                        className={cn(fit === 'cover' ? 'print-img-cover' : fit === 'contain' ? 'print-img-contain' : 'print-img-natural')}
                         style={{ filter: grayscale ? 'grayscale(1)' : undefined, border: border ? '1px solid currentColor' : undefined }}
                       />
                       {(captionName || captionMeta) && (
-                        <figcaption className="w-full truncate text-center text-[8px] leading-3">
+                        <figcaption className="print-caption">
                           {captionName ? it.name : ''}
                           {captionMeta ? ` ${it.width ? `${it.width}×${it.height}` : ''} ${formatBytes(it.size)}` : ''}
                         </figcaption>
@@ -163,24 +163,24 @@ export default function PrintDialog() {
                     </figure>
                   ))}
                 </div>
-                {pageNumbers && <div className="mt-1 text-center text-[8px] opacity-70">{page + 1} / {pageCount}</div>}
+                {pageNumbers && <div className="print-foot">{page + 1} / {pageCount}</div>}
               </div>
             </div>
-            <div className="flex items-center justify-center gap-2">
-              <button type="button" aria-label="上一页" disabled={page <= 0} onClick={() => setPage(page - 1)} className="rounded-md border border-stroke bg-card p-1.5 hover:bg-card-hover disabled:opacity-40">
+            <div className="print-nav">
+              <button type="button" aria-label="上一页" disabled={page <= 0} onClick={() => setPage(page - 1)} className="print-nav-btn">
                 <ChevronLeft size={16} />
               </button>
-              <span className="text-xs tabular-nums text-fg2">{spec.value} · {landscape ? '横向' : '纵向'} · {margin} mm · {copies} 份</span>
-              <button type="button" aria-label="下一页" disabled={page >= pageCount - 1} onClick={() => setPage(page + 1)} className="rounded-md border border-stroke bg-card p-1.5 hover:bg-card-hover disabled:opacity-40">
+              <span className="status-meta">{spec.value} · {landscape ? '横向' : '纵向'} · {margin} mm · {copies} 份</span>
+              <button type="button" aria-label="下一页" disabled={page >= pageCount - 1} onClick={() => setPage(page + 1)} className="print-nav-btn">
                 <ChevronRight size={16} />
               </button>
             </div>
           </div>
 
-          <div className="win-scroll min-h-0 overflow-y-auto pr-1">
+          <div className="print-side win-scroll">
             <Group title="纸张">
               <Select value={paper} options={PAPERS.map((x) => ({ value: x.value, label: x.label }))} onChange={setPaper} />
-              <div className="mt-2 flex gap-1.5">
+              <div className="print-chips print-chips--2 print-chips--top">
                 {[false, true].map((value) => (
                   <button key={String(value)} type="button" onClick={() => setLandscape(value)} className={chip(landscape === value)}>
                     {value ? '横向' : '纵向'}
@@ -189,7 +189,7 @@ export default function PrintDialog() {
               </div>
             </Group>
             <Group title="每页版式">
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="print-chips print-chips--3">
                 {LAYOUTS.map((l) => (
                   <button key={l.value} type="button" onClick={() => setPerPage(l.value)} className={chip(perPage === l.value)}>
                     {l.label}
@@ -223,7 +223,7 @@ export default function PrintDialog() {
               />
             </Group>
             <Group title="输出">
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="print-chips print-chips--2">
                 <button type="button" onClick={() => setOutput('print')} className={chip(output === 'print')}>
                   打印
                 </button>
@@ -232,7 +232,7 @@ export default function PrintDialog() {
                 </button>
               </div>
               {output === 'pdf' && (
-                <p className="mt-2 text-[11px] leading-5 text-fg3">
+                <p className="print-note">
                   将在系统窗口中选择「Microsoft Print to PDF」保存；份数固定为 1。
                 </p>
               )}
@@ -243,7 +243,7 @@ export default function PrintDialog() {
               </Group>
             )}
             <Group title="页面内容">
-              <div className="flex flex-col gap-2">
+              <div className="print-list">
                 <Checkbox checked={captionName} onChange={setCaptionName}>文件名</Checkbox>
                 <Checkbox checked={captionMeta} onChange={setCaptionMeta}>尺寸与文件大小</Checkbox>
                 <Checkbox checked={header} onChange={setHeader}>页眉（拾光 + 时间）</Checkbox>
@@ -253,13 +253,13 @@ export default function PrintDialog() {
                 <Checkbox checked={darkPage} onChange={setDarkPage}>深色纸底</Checkbox>
               </div>
             </Group>
-            <p className="text-[11px] leading-5 text-fg3">
+            <p className="print-side-note">
               旋转、翻转和调色会先渲染进打印稿。视频会被跳过。一次最多 48 页，超出请缩小范围。
               {totalSheets > 48 ? ' 当前页数已超出限制。' : ''}
             </p>
           </div>
         </div>
-        <div className="grid auto-cols-fr grid-flow-col gap-2 border-t border-stroke bg-dialog-footer px-6 py-5">
+        <div className="dialog-footer">
           <Button variant="accent" disabled={!photos.length || busy || totalSheets > 48} onClick={run}>
             {output === 'pdf' ? <FileDown size={15} /> : <Printer size={15} />}
             {busy ? '正在排版…' : output === 'pdf' ? '导出 PDF' : `打印 ${totalSheets} 页`}
@@ -272,13 +272,13 @@ export default function PrintDialog() {
 }
 
 function chip(active: boolean) {
-  return cn('h-8 flex-1 rounded-[5px] border text-[13px]', active ? 'border-accent bg-accent-soft text-accent' : 'border-stroke bg-card hover:bg-card-hover');
+  return cn('print-chip', active ? 'print-chip--on' : 'print-chip--off');
 }
 
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="mb-3 rounded-md border border-stroke bg-card p-3">
-      <h3 className="mb-2 text-[13px] font-semibold">{title}</h3>
+    <div className="print-card">
+      <h3 className="print-card-title">{title}</h3>
       {children}
     </div>
   );
@@ -286,7 +286,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 
 function Select({ value, options, onChange }: { value: string; options: { value: string; label: string }[]; onChange: (v: string) => void }) {
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className="h-8 w-full rounded-[5px] border border-stroke bg-card px-2 text-[13px] text-fg outline-none hover:bg-card-hover focus:border-accent">
+    <select value={value} onChange={(e) => onChange(e.target.value)} className="print-plain-select">
       {options.map((o) => (
         <option key={o.value} value={o.value}>{o.label}</option>
       ))}

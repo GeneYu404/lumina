@@ -14,7 +14,7 @@ function DarkBtn({ icon: Icon, label, onClick }: { icon: LucideIcon; label: stri
       title={label}
       aria-label={label}
       onClick={onClick}
-      className="flex h-9 w-9 items-center justify-center rounded-lg text-white transition-colors hover:bg-white/15 active:bg-white/10"
+      className="imm-btn"
     >
       <Icon size={18} strokeWidth={1.7} />
     </button>
@@ -55,8 +55,8 @@ export default function ImmersiveBar() {
     <>
       <div
         className={cn(
-          'pointer-events-none absolute left-4 top-4 z-30 max-w-[60%] truncate rounded-lg bg-black/55 px-3 py-1.5 text-xs text-white backdrop-blur transition-opacity duration-300',
-          visible ? 'opacity-100' : 'opacity-0',
+          'imm-name',
+          visible ? 'imm-name--on' : 'imm-name--off',
         )}
       >
         {item?.name} · {index + 1} / {total}
@@ -66,23 +66,23 @@ export default function ImmersiveBar() {
       {item?.kind !== 'video' && (
         <div
           className={cn(
-            'absolute bottom-5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 rounded-xl border border-white/10 bg-black/60 p-1 text-white shadow-2xl backdrop-blur-xl transition-all duration-300',
-            visible ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-3 opacity-0',
+            'imm-bar',
+            visible ? 'imm-bar--on' : 'imm-bar--off',
           )}
           onDoubleClick={(e) => e.stopPropagation()}
         >
         <DarkBtn icon={ChevronLeft} label="上一张" onClick={() => S().step(-1)} />
-        <div className="mx-1 h-5 w-px bg-white/15" />
+        <div className="sep--on-dark" />
         <DarkBtn icon={Minus} label="缩小" onClick={() => S().zoomStep(-1)} />
-        <span className="min-w-[52px] text-center text-xs tabular-nums">{formatZoom(scale)}</span>
+        <span className="imm-zoom">{formatZoom(scale)}</span>
         <DarkBtn icon={Plus} label="放大" onClick={() => S().zoomStep(1)} />
         <DarkBtn icon={fit ? Scan : Shrink} label={fit ? '实际大小' : '适应窗口'} onClick={() => (fit ? S().actualSize() : S().fitToWindow())} />
-        <div className="mx-1 h-5 w-px bg-white/15" />
+        <div className="sep--on-dark" />
         {item && <DarkBtn icon={RotateCcw} label="向左旋转" onClick={() => S().rotate(item.id, -90)} />}
         {item && <DarkBtn icon={RotateCw} label="向右旋转" onClick={() => S().rotate(item.id, 90)} />}
-        <div className="mx-1 h-5 w-px bg-white/15" />
+        <div className="sep--on-dark" />
         <DarkBtn icon={ChevronRight} label="下一张" onClick={() => S().step(1)} />
-        <div className="mx-1 h-5 w-px bg-white/15" />
+        <div className="sep--on-dark" />
         <DarkBtn icon={Minimize} label="退出全屏 (Esc)" onClick={exitImmersive} />
         </div>
       )}

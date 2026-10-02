@@ -25,33 +25,33 @@ export default function WallpaperDialog() {
   };
 
   return (
-    <div className="animate-fade-in fixed inset-0 z-[900] flex items-center justify-center bg-black/35 p-4" onPointerDown={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <div className="animate-dialog-in w-full max-w-md overflow-hidden rounded-lg border border-stroke bg-dialog text-fg shadow-dialog">
-        <div className="flex items-center justify-between px-6 pb-2 pt-5">
-          <h2 className="text-xl font-semibold">设为桌面背景</h2>
-          <button type="button" aria-label="关闭" onClick={close} className="flex h-8 w-8 items-center justify-center rounded-md text-fg2 hover:bg-subtle">
+    <div className="dialog-overlay" onPointerDown={(e) => { if (e.target === e.currentTarget) close(); }}>
+      <div className="dialog wall-dialog">
+        <div className="wall-head">
+          <h2 className="collage-title">设为桌面背景</h2>
+          <button type="button" aria-label="关闭" onClick={close} className="dialog-close">
             <X size={16} />
           </button>
         </div>
-        <div className="px-6 pb-5">
-          <div className="mb-4 overflow-hidden rounded-md border border-stroke bg-viewer p-3">
-            <img src={item.thumb ?? item.url} alt={item.name} className="mx-auto max-h-40 rounded" />
+        <div className="wall-body">
+          <div className="wall-preview">
+            <img src={item.thumb ?? item.url} alt={item.name} className="wall-img" />
           </div>
-          <h3 className="mb-2 text-[13px] font-semibold">摆放方式</h3>
-          <div className="grid grid-cols-5 gap-1.5">
+          <h3 className="mini-title">摆放方式</h3>
+          <div className="wall-styles">
             {WALLPAPER_STYLES.map((s) => (
               <button
                 key={s.value}
                 type="button"
                 onClick={() => setStyle(s.value)}
-                className={cn('h-9 rounded-[5px] border text-[13px]', style === s.value ? 'border-accent bg-accent-soft text-accent' : 'border-stroke bg-card hover:bg-card-hover')}
+                className={cn('wall-style', style === s.value ? 'wall-style--on' : 'wall-style--off')}
               >
                 {s.label}
               </button>
             ))}
           </div>
         </div>
-        <div className="grid auto-cols-fr grid-flow-col gap-2 border-t border-stroke bg-dialog-footer px-6 py-5">
+        <div className="dialog-footer">
           <Button variant="accent" disabled={busy} onClick={apply}>
             {busy ? '设置中…' : '设为背景'}
           </Button>

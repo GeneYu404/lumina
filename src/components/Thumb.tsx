@@ -24,19 +24,19 @@ export default function Thumb({
   }, [item.id, item.thumb, item.thumbState, item.error]);
   if (item.error) {
     return (
-      <div className={cn('flex h-full w-full items-center justify-center bg-subtle text-fg3', className)}>
+      <div className={cn('thumb-error', className)}>
         <ImageOff size={Math.max(14, Math.min(28, size / 4))} strokeWidth={1.4} />
       </div>
     );
   }
   if (!item.thumb) {
     return item.kind === 'video' ? (
-      <div className={cn('flex h-full w-full flex-col items-center justify-center gap-1.5 bg-[#14171c] text-fg3', className)}>
+      <div className={cn('thumb-video', className)}>
         <Film size={Math.max(16, Math.min(30, size / 3.4))} strokeWidth={1.5} />
-        <span className="max-w-full truncate px-2 text-[10px] text-fg3" style={{ fontFamily: 'inherit' }}>{item.name}</span>
+        <span className="thumb-name">{item.name}</span>
       </div>
     ) : (
-      <div className={cn('h-full w-full animate-pulse bg-subtle', className)} />
+      <div className={cn('thumb-skeleton', className)} />
     );
   }
   const minSide = Math.max(1, Math.min(item.width || size, item.height || size));
@@ -53,7 +53,7 @@ export default function Thumb({
       draggable={false}
       loading="lazy"
       decoding="async"
-      className={cn('h-full w-full max-w-none select-none', cover ? 'object-cover' : 'object-contain', className)}
+      className={cn('thumb-img', cover ? 'thumb-img--cover' : 'thumb-img--contain', className)}
       style={style}
     />
   );

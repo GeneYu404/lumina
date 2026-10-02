@@ -80,15 +80,15 @@ export default function ShortcutsDialog() {
         </Button>
       }
     >
-      <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
+      <div className="sc-grid">
         {GROUPS.map((g) => (
           <div key={g.title}>
-            <h3 className="mb-2 text-[13px] font-semibold text-fg">{g.title}</h3>
-            <div className="flex flex-col">
+            <h3 className="sc-title">{g.title}</h3>
+            <div className="sc-list">
               {g.items.map(([k, d]) => (
-                <div key={k} className="flex items-center justify-between gap-3 border-b border-stroke py-1.5 last:border-b-0">
-                  <span className="text-[13px] text-fg2">{d}</span>
-                  <span className="flex shrink-0 flex-wrap justify-end gap-1">
+                <div key={k} className="sc-row">
+                  <span className="sc-desc">{d}</span>
+                  <span className="sc-keys">
                     {k.split(' / ').map((part) => (
                       <kbd key={part} className="kbd">
                         {part}

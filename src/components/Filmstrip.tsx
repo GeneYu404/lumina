@@ -22,14 +22,11 @@ const FilmThumb = memo(function FilmThumb({ item, active }: { item: ImageItem; a
       data-id={item.id}
       title={item.name}
       onClick={() => S().goTo(item.id)}
-      className={cn(
-        'relative shrink-0 overflow-hidden rounded-md transition-all duration-150',
-        active ? 'h-[58px] w-[58px] outline-2 outline-offset-2 outline-accent' : 'h-[52px] w-[52px] opacity-75 hover:opacity-100',
-      )}
+      className={cn('chip', active ? 'chip--on' : 'chip--off')}
     >
       <Thumb item={item} size={58} />
       {item.favorite && (
-        <Heart size={11} className="absolute right-1 top-1 fill-[#e81123] text-[#e81123] drop-shadow" strokeWidth={2} />
+        <Heart size={11} className="chip-fav" strokeWidth={2} />
       )}
     </button>
   );
@@ -114,13 +111,13 @@ export default function Filmstrip() {
   const slice = list.slice(from, to);
 
   return (
-    <div className="h-[78px] shrink-0 border-t border-stroke bg-layer">
-      <div ref={ref} className="win-scroll relative flex h-full items-center gap-2 overflow-x-auto overflow-y-hidden px-4">
-        {from > 0 && <div aria-hidden className="shrink-0" style={{ width: from * SLOT }} />}
+    <div className="filmstrip">
+      <div ref={ref} className="filmstrip-scroll win-scroll">
+        {from > 0 && <div aria-hidden className="filmstrip-spacer" style={{ width: from * SLOT }} />}
         {slice.map((it) => (
           <FilmThumb key={it.id} item={it} active={it.id === currentId} />
         ))}
-        {to < total && <div aria-hidden className="shrink-0" style={{ width: (total - to) * SLOT }} />}
+        {to < total && <div aria-hidden className="filmstrip-spacer" style={{ width: (total - to) * SLOT }} />}
       </div>
     </div>
   );

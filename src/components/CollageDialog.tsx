@@ -156,38 +156,38 @@ export default function CollageDialog({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="animate-fade-in fixed inset-0 z-[900] flex items-center justify-center bg-black/35 p-4" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="animate-dialog-in flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-stroke bg-dialog text-fg shadow-dialog">
-        <div className="flex items-center justify-between px-6 pb-3 pt-5">
-          <h2 className="text-xl font-semibold">拼图</h2>
-          <button type="button" aria-label="关闭" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-md text-fg2 hover:bg-subtle">
+    <div className="dialog-overlay" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="dialog collage">
+        <div className="collage-head">
+          <h2 className="collage-title">拼图</h2>
+          <button type="button" aria-label="关闭" onClick={onClose} className="dialog-close">
             <X size={16} />
           </button>
         </div>
-        <div className="grid min-h-0 flex-1 grid-cols-[1fr_280px] gap-4 overflow-hidden px-6 pb-4">
-          <div className="flex min-h-0 flex-col gap-3">
-            <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-viewer p-3">
-              <canvas ref={canvasRef} className="max-h-full max-w-full rounded-md shadow-lg" />
-              {selected.length === 0 && <div className="text-sm text-fg3">从右侧选择要拼接的图片</div>}
+        <div className="collage-body">
+          <div className="collage-left">
+            <div className="collage-stage">
+              <canvas ref={canvasRef} className="collage-canvas" />
+              {selected.length === 0 && <div className="collage-empty">从右侧选择要拼接的图片</div>}
             </div>
-            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            <div className="collage-row">
               {selected.map((it, i) => (
-                <div key={it.id} className="group/pc relative shrink-0 rounded-md border border-stroke p-1">
-                  <img src={it.thumb ?? it.url} alt={it.name} className="h-14 w-14 rounded object-cover" />
-                  <div className="absolute -top-1 -right-1 flex gap-0.5">
-                    <button type="button" aria-label="前移" onClick={() => move(i, -1)} className="rounded bg-card px-1 text-[10px] shadow-flyout hover:bg-card-hover"><Minus size={10} /></button>
-                    <button type="button" aria-label="后移" onClick={() => move(i, 1)} className="rounded bg-card px-1 text-[10px] shadow-flyout hover:bg-card-hover"><Plus size={10} /></button>
+                <div key={it.id} className="pcard">
+                  <img src={it.thumb ?? it.url} alt={it.name} className="pcard-img" />
+                  <div className="pcard-move">
+                    <button type="button" aria-label="前移" onClick={() => move(i, -1)} className="pcard-move-btn"><Minus size={10} /></button>
+                    <button type="button" aria-label="后移" onClick={() => move(i, 1)} className="pcard-move-btn"><Plus size={10} /></button>
                   </div>
-                  <button type="button" aria-label="移除" onClick={() => setPicked(picked.filter((p) => p !== it.id))} className="absolute -right-1 -bottom-1 rounded bg-card p-0.5 shadow-flyout hover:bg-card-hover">
+                  <button type="button" aria-label="移除" onClick={() => setPicked(picked.filter((p) => p !== it.id))} className="pcard-del">
                     <X size={10} />
                   </button>
                 </div>
               ))}
             </div>
           </div>
-          <div className="win-scroll min-h-0 overflow-y-auto pr-1">
+          <div className="collage-side win-scroll">
             <Section title="图片（按顺序点选）">
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="pick-grid">
                 {all.slice(0, 60).map((it) => {
                   const on = picked.includes(it.id);
                   return (
@@ -196,11 +196,11 @@ export default function CollageDialog({ onClose }: { onClose: () => void }) {
                       type="button"
                       title={it.name}
                       onClick={() => setPicked(on ? picked.filter((p) => p !== it.id) : [...picked, it.id])}
-                      className={cn('relative overflow-hidden rounded border', on ? 'border-accent outline-2 outline-accent' : 'border-stroke hover:opacity-85')}
+                      className={cn('pick', on ? 'pick--on' : 'pick--off')}
                     >
-                      <img src={it.thumb ?? it.url} alt="" className="aspect-square w-full object-cover" />
+                      <img src={it.thumb ?? it.url} alt="" className="pick-img" />
                       {on && (
-                        <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-on-accent">
+                        <span className="pick-check">
                           <Check size={10} strokeWidth={3} />
                         </span>
                       )}
@@ -210,16 +210,13 @@ export default function CollageDialog({ onClose }: { onClose: () => void }) {
               </div>
             </Section>
             <Section title="布局">
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="layout-grid">
                 {LAYOUTS.map((l) => (
                   <button
                     key={l.value}
                     type="button"
                     onClick={() => setLayout(l.value)}
-                    className={cn(
-                      'flex items-center gap-2 rounded-md border px-2 py-2 text-[13px]',
-                      layout === l.value ? 'border-accent bg-accent-soft text-accent' : 'border-stroke bg-card hover:bg-card-hover',
-                    )}
+                    className={cn('layout-btn', layout === l.value ? 'layout-btn--on' : 'layout-btn--off')}
                   >
                     <Grid2x2 size={14} /> {l.label}
                   </button>
@@ -236,19 +233,19 @@ export default function CollageDialog({ onClose }: { onClose: () => void }) {
               <Row label="外边距" value={`${padding}px`}>
                 <Slider ariaLabel="外边距" min={0} max={80} value={padding} onChange={setPadding} />
               </Row>
-              <div className="flex items-center justify-between pt-1">
-                <span className="text-[13px]">背景色</span>
-                <input type="color" value={bg} onChange={(e) => setBg(e.target.value)} className="h-8 w-14 cursor-pointer rounded border border-stroke bg-card" aria-label="背景色" />
+              <div className="mini-color-row">
+                <span>背景色</span>
+                <input type="color" value={bg} onChange={(e) => setBg(e.target.value)} className="color-input" aria-label="背景色" />
               </div>
             </Section>
             <Section title="导出">
-              <div className="flex gap-1.5">
+              <div className="fmt-row">
                 {(['image/png', 'image/jpeg', 'image/webp'] as const).map((f) => (
                   <button
                     key={f}
                     type="button"
                     onClick={() => setFormat(f)}
-                    className={cn('h-8 flex-1 rounded-[5px] border text-[12px]', format === f ? 'border-accent bg-accent-soft text-accent' : 'border-stroke bg-card hover:bg-card-hover')}
+                    className={cn('fmt-btn', format === f ? 'fmt-btn--on' : 'fmt-btn--off')}
                   >
                     {f === 'image/png' ? 'PNG' : f === 'image/jpeg' ? 'JPG' : 'WebP'}
                   </button>
@@ -262,7 +259,7 @@ export default function CollageDialog({ onClose }: { onClose: () => void }) {
             </Section>
           </div>
         </div>
-        <div className="grid auto-cols-fr grid-flow-col gap-2 border-t border-stroke bg-dialog-footer px-6 py-5">
+        <div className="dialog-footer">
           <Button variant="accent" disabled={!selected.length || busy} onClick={save}>
             <Download size={15} /> {busy ? '处理中…' : '导出拼图'}
           </Button>
@@ -275,8 +272,8 @@ export default function CollageDialog({ onClose }: { onClose: () => void }) {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="mb-4">
-      <h3 className="mb-2 text-[13px] font-semibold">{title}</h3>
+    <div className="mini-section">
+      <h3 className="mini-title">{title}</h3>
       {children}
     </div>
   );
@@ -284,10 +281,10 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Row({ label, value, children }: { label: string; value: string; children: React.ReactNode }) {
   return (
-    <div className="py-1">
-      <div className="flex items-center justify-between text-[13px]">
+    <div className="mini-row">
+      <div className="mini-row-head">
         <span>{label}</span>
-        <span className="text-xs tabular-nums text-fg3">{value}</span>
+        <span className="mini-row-val">{value}</span>
       </div>
       {children}
     </div>

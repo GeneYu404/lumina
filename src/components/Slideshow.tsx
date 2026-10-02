@@ -29,14 +29,14 @@ function Slide({
   const style = anim ? { animation: `${anim} .8s cubic-bezier(.2,.7,.2,1) both` } : undefined;
   if (item.kind === 'video') {
     return (
-      <div className="absolute inset-0 flex items-center justify-center" style={style}>
+      <div className="slide-stage" style={style}>
         <video
           key={item.url}
           src={item.url}
           autoPlay
           muted
           playsInline
-          className="max-h-full max-w-full"
+          className="slide-fit"
           onError={(e) => {
             e.currentTarget.style.display = 'none';
           }}
@@ -46,12 +46,12 @@ function Slide({
   }
   if (!item.width || !item.height) {
     return (
-      <div className="absolute inset-0" style={style}>
+      <div className="slide-layer" style={style}>
         <img
           src={item.url}
           alt=""
           draggable={false}
-          className="absolute inset-0 m-auto max-h-full max-w-full"
+          className="slide-fit"
           style={{ imageOrientation: 'none' }}
           onLoad={(e) => {
             const im = e.currentTarget;
@@ -87,9 +87,9 @@ function Slide({
   const tc = temperatureColor(item.adjust.temperature);
   const vg = vignetteGradient(item.adjust.vignette);
   return (
-    <div className="absolute inset-0" style={style}>
+    <div className="slide-layer" style={style}>
       <div
-        className="absolute left-1/2 top-1/2"
+        className="slide-frame"
         style={{
           width: dw,
           height: dh,
@@ -103,11 +103,11 @@ function Slide({
           src={item.url}
           alt={item.name}
           draggable={false}
-          className="h-full w-full max-w-none"
+          className="slide-media"
           style={{ filter: cssFilter(item.adjust, blurNatural(item.adjust, item.width, item.height) * scale) }}
         />
-        {tc && <div className="absolute inset-0" style={{ background: tc, mixBlendMode: 'soft-light' }} />}
-        {vg && <div className="absolute inset-0" style={{ background: vg }} />}
+        {tc && <div className="media-overlay" style={{ background: tc, mixBlendMode: 'soft-light' }} />}
+        {vg && <div className="media-overlay" style={{ background: vg }} />}
       </div>
     </div>
   );
@@ -132,13 +132,9 @@ function SlideBtn({
       title={label}
       aria-label={label}
       onClick={onClick}
-      className={cn(
-        'flex items-center justify-center rounded-lg text-white transition-colors hover:bg-white/15 active:bg-white/10',
-        big ? 'h-11 w-11 bg-white/10' : 'h-9 w-9',
-        active && 'bg-white/20 text-accent',
-      )}
+      className={cn('slide-btn', big && 'slide-btn--big', active && 'slide-btn--active')}
     >
-      <Icon size={big ? 22 : 18} strokeWidth={1.7} className={big ? 'fill-current' : ''} />
+      <Icon size={big ? 22 : 18} strokeWidth={1.7} className={big ? 'i-fill-current' : ''} />
     </button>
   );
 }
@@ -258,7 +254,7 @@ export default function Slideshow() {
   const idx = list.findIndex((i) => i.id === currentId);
 
   return createPortal(
-    <div className={cn('fixed inset-0 z-[800] select-none overflow-hidden bg-black text-white', !showUi && 'cursor-none')}>
+    <div className={cn('slide-root', !showUi && 'slide-root--hide')}>
       {layers.map((l, i) => {
         const it = images.find((x) => x.id === l.id);
         if (!it) return null;
@@ -275,48 +271,42 @@ export default function Slideshow() {
       })}
 
       {playing && list.length > 1 && (
-        <div className="absolute inset-x-0 top-0 h-[3px] bg-white/10">
+        <div className="slide-progress">
           <div
             key={`${currentId}-${settings.slideInterval}`}
-            className="h-full bg-accent"
+            className="slide-progress-bar"
             style={{ animation: `pv-progress ${settings.slideInterval}s linear forwards` }}
           />
         </div>
       )}
 
       <div
-        className={cn(
-          'absolute inset-x-0 top-0 flex items-start justify-between bg-linear-to-b from-black/60 to-transparent px-5 pb-10 pt-5 transition-opacity duration-300',
-          showUi ? 'opacity-100' : 'pointer-events-none opacity-0',
-        )}
+        className={cn('slide-top', showUi ? 'slide-top--on' : 'slide-top--off')}
       >
-        <div className="min-w-0">
-          <div className="truncate text-sm font-medium">{cur?.name}</div>
-          <div className="text-xs text-white/60">
+        <div className="slide-name-body">
+          <div className="slide-name">{cur?.name}</div>
+          <div className="slide-meta">
             {idx + 1} / {list.length}
             {playing ? ` · 每 ${settings.slideInterval} 秒切换` : ' · 已暂停'}
           </div>
         </div>
-        <button type="button" aria-label="退出放映" onClick={stopSlideshow} className="rounded-md p-2 hover:bg-white/10">
+        <button type="button" aria-label="退出放映" onClick={stopSlideshow} className="slide-close">
           <X size={20} />
         </button>
       </div>
 
       <div
-        className={cn(
-          'absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-white/10 bg-black/55 p-1.5 shadow-2xl backdrop-blur-xl transition-all duration-300',
-          showUi ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0',
-        )}
+        className={cn('slide-bar', showUi ? 'slide-bar--on' : 'slide-bar--off')}
       >
         <SlideBtn icon={SkipBack} label="上一张 (←)" onClick={prev} />
         <SlideBtn icon={playing ? Pause : Play} label={playing ? '暂停 (空格)' : '播放 (空格)'} onClick={() => setPlaying((p) => !p)} big />
         <SlideBtn icon={SkipForward} label="下一张 (→)" onClick={next} />
-        <div className="mx-1 h-6 w-px bg-white/15" />
+        <div className="sep--dark" />
         <select
           aria-label="切换间隔"
           value={settings.slideInterval}
           onChange={(e) => S().setSetting('slideInterval', Number(e.target.value))}
-          className="h-9 rounded-md bg-transparent px-2 text-sm text-white outline-none hover:bg-white/10 [&>option]:text-black"
+          className="slide-select"
         >
           {[2, 3, 4, 5, 8, 10, 15, 30].map((n) => (
             <option key={n} value={n}>
@@ -328,7 +318,7 @@ export default function Slideshow() {
           aria-label="过渡效果"
           value={settings.slideTransition}
           onChange={(e) => S().setSetting('slideTransition', e.target.value as SlideTransition)}
-          className="h-9 rounded-md bg-transparent px-2 text-sm text-white outline-none hover:bg-white/10 [&>option]:text-black"
+          className="slide-select"
         >
           <option value="fade">淡入淡出</option>
           <option value="slide">滑动</option>
@@ -341,7 +331,7 @@ export default function Slideshow() {
           active={settings.slideShuffle}
           onClick={() => S().setSetting('slideShuffle', !settings.slideShuffle)}
         />
-        <div className="mx-1 h-6 w-px bg-white/15" />
+        <div className="sep--dark" />
         <SlideBtn icon={Minimize} label="退出放映 (Esc)" onClick={stopSlideshow} />
       </div>
     </div>,

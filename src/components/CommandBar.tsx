@@ -135,8 +135,8 @@ export default function CommandBar() {
   ];
 
   return (
-    <div className="relative z-20 flex h-12 shrink-0 items-center gap-1 px-2">
-      <div className="flex shrink-0 items-center gap-1">
+    <div className="cmdbar">
+      <div className="cmdbar-group">
         {/* On the welcome screen its big buttons already do this: no duplicate here. */}
         {hasImages && (
         <ToolButton
@@ -145,7 +145,7 @@ export default function CommandBar() {
           shortcut="Ctrl+O"
           showLabel="sm"
           tipAlign="start"
-          trailing={<ChevronDown size={14} className="text-fg2" />}
+          trailing={<ChevronDown size={14} className="icon-fg2" />}
           onClick={(e) => openMenu.toggle(e.currentTarget)}
           active={openMenu.open}
         />
@@ -162,48 +162,48 @@ export default function CommandBar() {
         )}
       </div>
 
-      <div className="flex min-w-0 flex-1 items-center justify-center gap-0.5 max-sm:justify-start max-sm:overflow-x-auto max-sm:[scrollbar-width:none]">
+      <div className="cmdbar-center">
         {hasImages && mode === 'viewer' && item && (
           <>
             {!isVideo && (
             <>
-            <ToolButton icon={ZoomIn} label="放大" shortcut="Ctrl + +" className="hidden sm:inline-flex" onClick={() => S().zoomStep(1)} />
-            <ToolButton icon={ZoomOut} label="缩小" shortcut="Ctrl + -" className="hidden sm:inline-flex" onClick={() => S().zoomStep(-1)} />
+            <ToolButton icon={ZoomIn} label="放大" shortcut="Ctrl + +" className="tool-hide-sm" onClick={() => S().zoomStep(1)} />
+            <ToolButton icon={ZoomOut} label="缩小" shortcut="Ctrl + -" className="tool-hide-sm" onClick={() => S().zoomStep(-1)} />
             <ToolButton
               icon={fit ? Scan : Shrink}
               label={fit ? '实际大小' : '适应窗口'}
               shortcut={fit ? '1' : '0'}
-              className="hidden sm:inline-flex"
+              className="tool-hide-sm"
               onClick={() => (fit ? S().actualSize() : S().fitToWindow())}
             />
-            <Sep className="hidden sm:block" />
+            <Sep className="sep--sm" />
             <ToolButton icon={RotateCcw} label="向左旋转" shortcut="Shift+R" onClick={() => S().rotate(item.id, -90)} />
             <ToolButton icon={RotateCw} label="向右旋转" shortcut="R" onClick={() => S().rotate(item.id, 90)} />
             <ToolButton
               icon={FlipHorizontal2}
               label="翻转"
-              className="hidden sm:inline-flex"
+              className="tool-hide-sm"
               active={flipMenu.open}
               onClick={(e) => flipMenu.toggle(e.currentTarget)}
             />
-            <Sep className="hidden md:block" />
-            <ToolButton icon={Crop} label="裁剪" shortcut="C" className="hidden md:inline-flex" onClick={startCrop} />
+            <Sep className="sep--md" />
+            <ToolButton icon={Crop} label="裁剪" shortcut="C" className="tool-hide-md" onClick={startCrop} />
             <ToolButton
               icon={SlidersHorizontal}
               label="编辑与调整"
               shortcut="E"
-              className="hidden md:inline-flex"
+              className="tool-hide-md"
               active={panel === 'edit'}
               onClick={() => S().togglePanel('edit')}
             />
             </>
             )}
-            <Sep className={cn(isVideo && 'hidden')} />
+            <Sep className={cn(isVideo && 'u-hidden')} />
             <ToolButton
               icon={Heart}
               label={item.favorite ? '取消收藏' : '收藏'}
               shortcut="Ctrl+D"
-              iconClassName={item.favorite ? 'fill-[#e81123] text-[#e81123]' : ''}
+              iconClassName={item.favorite ? 'fav-on' : ''}
               onClick={() => S().toggleFavorite(item.id)}
             />
             <ToolButton icon={Trash2} label="从列表中移除" shortcut="Delete" onClick={() => requestRemove()} />
@@ -218,7 +218,7 @@ export default function CommandBar() {
               label={`排序：${SORT_LABEL[sortKey]}`}
               showLabel="always"
               noTip
-              trailing={<ChevronDown size={14} className="text-fg2" />}
+              trailing={<ChevronDown size={14} className="icon-fg2" />}
               active={sortMenu.open}
               onClick={(e) => sortMenu.toggle(e.currentTarget)}
             />
@@ -231,18 +231,18 @@ export default function CommandBar() {
               ]}
               onChange={(f) => S().setFilter(f)}
             />
-            <Sep className="hidden sm:block" />
-            <ToolButton icon={Info} label="文件信息" shortcut="I" className="hidden sm:inline-flex" active={panel === 'info'} onClick={() => S().togglePanel('info')} />
+            <Sep className="sep--sm" />
+            <ToolButton icon={Info} label="文件信息" shortcut="I" className="tool-hide-sm" active={panel === 'info'} onClick={() => S().togglePanel('info')} />
           </>
         )}
       </div>
 
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="cmdbar-group">
         {hasImages && (
           <ToolButton icon={Play} label="幻灯片放映" shortcut="F5" showLabel="lg" tipAlign="end" onClick={startSlideshow} />
         )}
         {hasImages && mode === 'viewer' && (
-          <ToolButton icon={Maximize} label="全屏" shortcut="F11" tipAlign="end" className="hidden sm:inline-flex" onClick={toggleImmersive} />
+          <ToolButton icon={Maximize} label="全屏" shortcut="F11" tipAlign="end" className="tool-hide-sm" onClick={toggleImmersive} />
         )}
         <ToolButton icon={Ellipsis} label="更多选项" tipAlign="end" active={moreMenu.open} onClick={(e) => moreMenu.toggle(e.currentTarget)} />
       </div>

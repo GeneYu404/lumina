@@ -101,7 +101,7 @@ export function Menu({ open, onClose, items, anchor, point, align = 'start', min
     <div
       ref={ref}
       role="menu"
-      className="win-scroll animate-menu-in fixed z-[1000] max-h-[calc(100vh-16px)] overflow-y-auto rounded-lg border border-stroke bg-acrylic p-1 text-fg shadow-flyout backdrop-blur-2xl"
+      className="menu win-scroll"
       style={{ left: pos?.left ?? -9999, top: pos?.top ?? -9999, minWidth, visibility: pos ? 'visible' : 'hidden' }}
       data-no-pan
       onPointerDown={(e) => e.stopPropagation()}
@@ -112,10 +112,10 @@ export function Menu({ open, onClose, items, anchor, point, align = 'start', min
       }}
     >
       {visible.map((it, idx) => {
-        if (it.kind === 'separator') return <div key={idx} className="mx-1 my-1 h-px bg-stroke" />;
+        if (it.kind === 'separator') return <div key={idx} className="menu-sep" />;
         if (it.kind === 'header')
           return (
-            <div key={idx} className="px-3 pb-1 pt-2 text-xs font-medium text-fg3">
+            <div key={idx} className="menu-header">
               {it.label}
             </div>
           );
@@ -130,20 +130,17 @@ export function Menu({ open, onClose, items, anchor, point, align = 'start', min
               onClose();
               it.onSelect?.();
             }}
-            className={cn(
-              'flex h-8 w-full items-center gap-3 rounded-md px-2.5 text-left text-[13px] hover:bg-subtle active:bg-subtle-press disabled:pointer-events-none disabled:opacity-40',
-              it.danger && 'text-[#e0584b]',
-            )}
+            className={cn('menu-item', it.danger && 'menu-item--danger')}
           >
-            <span className="flex w-4 shrink-0 justify-center">
+            <span className="menu-icon">
               {it.checked ? (
-                <Check size={15} strokeWidth={2} className="text-accent" />
+                <Check size={15} strokeWidth={2} className="u-accent" />
               ) : Icon ? (
                 <Icon size={16} strokeWidth={1.6} />
               ) : null}
             </span>
-            <span className="flex-1 truncate">{it.label}</span>
-            {it.shortcut && <span className="pl-4 text-xs text-fg3">{it.shortcut}</span>}
+            <span className="menu-label">{it.label}</span>
+            {it.shortcut && <span className="menu-shortcut">{it.shortcut}</span>}
           </button>
         );
       })}

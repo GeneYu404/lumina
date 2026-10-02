@@ -87,7 +87,7 @@ export function CaptionClose() {
 
 export function Spinner({ size = 28, className }: { size?: number; className?: string }) {
   return (
-    <svg className={cn('animate-spin text-accent', className)} width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg className={cn('spinner', className)} width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeDasharray="40 100" />
     </svg>
   );
@@ -96,7 +96,7 @@ export function Spinner({ size = 28, className }: { size?: number; className?: s
 export function Wallpaper({ className }: { className?: string }) {
   return (
     <div
-      className={cn('pv-wallpaper pointer-events-none absolute inset-0', className)}
+      className={cn('pv-wallpaper', className)}
       aria-hidden="true"
       dangerouslySetInnerHTML={{ __html: BLOOM_SVG }}
     />
