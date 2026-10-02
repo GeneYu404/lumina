@@ -21,6 +21,16 @@
 - 不要主动 `npm install`；Node 24 只在 CI 缺 Bun 时允许降级
 - 如果看到 `npm install` 输出，立即停掉并改回 bun
 
+**前端栈（2026-10-03 起）**：React 19 源码跑在 **Preact 兼容层**上（`vite.config.ts` 的
+`resolve.alias`；`react-dom` / `react/jsx-runtime` 必须排在 `react` **前面**，否则前缀匹配会
+生成不存在的 `preact/compat/jsx-runtime`）。样式是**手写原生 CSS**，`index.css` 2,134 行
+（`@layer base` + `@layer components`，531 个语义类），`tailwindcss` / `@tailwindcss/vite` /
+`tailwind-merge` 已移除，`cn()` 只剩 `clsx`。
+
+⚠️ `body` 的 `background:#06122e` 是**字面量不是 `var(--bg)`** —— 查看器衬底不跟随主题，
+改主题时别顺手把它改成变量。`html[data-desktop] body{background:var(--bg)}`（Tauri 路径）
+才是跟随主题的那条。
+
 ## 2. `src-tauri/target` —— 绝对不能动
 
 它是 **mbx 缓存 symlink**（mode `120000` → `D:/mbx/targets/v1/<hash>`，hash 来自
