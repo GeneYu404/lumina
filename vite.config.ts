@@ -24,12 +24,11 @@ export default defineConfig({
     },
   },
   server: {
-    // Vite's recursive watcher otherwise tries to watch
-    // `src-tauri/target/debug/deps/lumina.exe` while cargo is still
-    // linking it, which throws EBUSY on Windows. Limit the watch to the
+    // MyGo's dev build links the executable under `.mygo/` while Go is still
+    // writing it, which throws EBUSY on Windows. Limit the watch to the
     // frontend tree.
     watch: {
-      ignored: ["**/src-tauri/**"],
+      ignored: ["**/.mygo/**", "**/build/**"],
     },
   },
 });

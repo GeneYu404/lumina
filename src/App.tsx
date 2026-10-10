@@ -144,7 +144,7 @@ function useDropAndPaste(setDragging: (v: boolean) => void) {
       );
     };
     // Desktop shell owns drag & drop: it hands us absolute paths (no bytes
-    // through JS), and Rust does one import + one thumbnail batch.
+    // through JS), and the Go side does one import + one thumbnail batch.
     let unsubscribe: (() => void) | undefined;
     let alive = true;
     if (isDesktop) {

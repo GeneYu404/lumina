@@ -1,4 +1,4 @@
-<#
+﻿<#
   在 MSYS2 的 MINGW64 环境里构建最小 FFmpeg sidecar（tools/build-ffmpeg-sidecar.sh 的包装）。
 
   为什么必须设 MSYSTEM=MINGW64：ffmpeg 的 configure 直接拒绝 MSYS 构建环境

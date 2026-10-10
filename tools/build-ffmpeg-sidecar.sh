@@ -11,7 +11,7 @@
 #   encoder   : pcm_s16le — converts fltp → s16 *inside libavcodec* via
 #                          libswresample, so we never need libavfilter /
 #                          the auto-inserted aresample filter
-#   muxer     : wav      (self-describing header on stdout; Rust parses it)
+#   muxer     : wav      (self-describing header on stdout; Go parses it)
 #   protocols : file, pipe
 #
 # Everything else stays off: no encoders for video, no muxers besides wav, no
@@ -21,11 +21,20 @@
 # Usage (from MSYS2 MINGW64 shell or any bash with /mingw64/bin on PATH):
 #   bash tools/build-ffmpeg-sidecar.sh [SRC_DIR] [OUT_DIR]
 #
+# Defaults: SRC = <repo>/ffmpeg-sc, OUT = <repo>/resources (which mygo build
+# copies next to Lumina.exe). Both are derived from this script's location,
+# so the checkout can be moved anywhere.
+#
 # Requires: MSYS2 with mingw-w64-x86_64-{gcc,make,pkgconf,nasm} + msys2 make/nasm.
 set -euo pipefail
 
-SRC="${1:-/d/Ai/lumina/src-tauri/ffmpeg-sc}"
-OUT="${2:-/d/Ai/lumina/src-tauri/bin}"
+# Derive the repo root from this script's own location, so the checkout can
+# live anywhere — build-sidecar.ps1 only has to cd into the repo.
+HERE="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(dirname "$HERE")"
+
+SRC="${1:-$ROOT/ffmpeg-sc}"
+OUT="${2:-$ROOT/resources}"
 JOBS="$(nproc 2>/dev/null || echo 4)"
 
 export PATH="/mingw64/bin:$PATH"
@@ -145,4 +154,4 @@ fi
 echo "decode: ${PCM} bytes of PCM over a pipe"
 
 echo
-echo "OK — drop this next to lumina.exe in src-tauri/target/release/"
+echo "OK — $OUT 下就是 sidecar，mygo build 会把它复制到 Lumina.exe 同级目录。"

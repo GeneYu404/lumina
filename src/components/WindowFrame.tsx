@@ -37,7 +37,7 @@ export default function WindowFrame({ children }: { children: ReactNode }) {
   return isDesktop ? <DesktopFrame>{children}</DesktopFrame> : <SimulatedFrame>{children}</SimulatedFrame>;
 }
 
-/** Inside the Tauri app: the real Windows window supplies the title bar. */
+/** Inside the desktop app: the real Windows window supplies the title bar. */
 function DesktopFrame({ children }: { children: ReactNode }) {
   const title = useStore((s) => getCurrent(s)?.name ?? null);
   useEffect(() => {

@@ -7,7 +7,7 @@
  * left at its default, but `naturalWidth/naturalHeight` stay in the physical
  * pixel space. Without compensating, the page builds a container from the
  * physical size while the rendered content is rotated, and the picture ends up
- * squeezed or stretched. Rust reports the visual dimensions for path items;
+ * squeezed or stretched. The Go shell reports the visual dimensions for path items;
  * here we patch the same field for File objects (web picker / drag-drop).
  */
 let cachedParser: Promise<typeof import('exifr').default> | null = null;

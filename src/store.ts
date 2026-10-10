@@ -213,7 +213,7 @@ export function createItem(file: File, path?: string, extra?: Partial<ImageItem>
 }
 
 /** An image registered from a filesystem path (desktop shell): bytes stay in
- *  Rust/the asset protocol, thumbnails arrive pre-decoded from Rust. */
+ *  the Go shell / the lumina:// protocol, thumbnails arrive pre-decoded from Go. */
 export function createPathItem(
   entry: { path: string; name: string; size: number; modified: number; width: number; height: number },
   thumb: string | null = null,
@@ -238,8 +238,8 @@ export function createPathItem(
     origWidth: entry.width,
     origHeight: entry.height,
     // Never fall back to the original as a thumbnail: for a big GIF that means
-    // several <img> decoding and animating the same file. Rust fills it in —
-    // but only on demand (see `requestThumbs`): a 100k-photo folder must not
+    // several <img> decoding and animating the same file. The Go shell fills
+    // it in, but only on demand (see `requestThumbs`): a 100k-photo folder must not
     // queue 100k decodes just for being open.
     thumb,
     thumbState: thumb ? 'done' : 'idle',
@@ -898,7 +898,7 @@ export function requestThumbs(ids: string[]) {
 
 /**
  * Progressive thumbnails for path items: nearest to the current image first,
- * one packed Rust batch per chunk, one store update per chunk. Nothing waits
+ * one packed Go batch per chunk, one store update per chunk. Nothing waits
  * on it. Single-flight: a request while a loop runs only patches state — the
  * live loop re-scans after every await, and the empty-scan exit path is fully
  * synchronous, so a new item can never slip through the gap.
@@ -925,7 +925,7 @@ async function fillThumbs() {
       const images = chunk.filter((i) => i.kind !== 'video');
       const videos = chunk.filter((i) => i.kind === 'video');
 
-      // Images: one packed Rust batch (indices line up with `images`).
+      // Images: one packed Go batch (indices line up with `images`).
       // Videos: the system decoder paints posters.
       //
       // The timeout matters: a `thumb_batch` that never settles would leave
@@ -962,7 +962,7 @@ async function fillThumbs() {
           if (t) URL.revokeObjectURL(t);
           return;
         }
-        // Images Rust cannot decode (SVG, AVIF…) fall back to the original;
+        // Images the Go shell cannot decode (SVG, AVIF…) fall back to the original;
         // undecodable videos keep a placeholder instead.
         const thumb = item.kind === 'video' ? t : (t ?? item.url);
         patches.set(item.id, { thumb, thumbState: 'done' });
@@ -1022,7 +1022,7 @@ function pumpThumbs() {
       : item.remote
         ? loadImageEl(url).then((img) => ({ thumb: url, width: img.naturalWidth || 1024, height: img.naturalHeight || 1024 }))
         : makeThumb(url).then((r) => r as { thumb: string; width: number; height: number });
-    // Same reasoning as the Rust batch: a decoder that never settles would pin
+    // Same reasoning as the Go batch: a decoder that never settles would pin
     // thumbState at 'loading' and the item could never be requested again.
     withTimeout(task, THUMB_TIMEOUT_MS)
       .then((res) => {

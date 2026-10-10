@@ -3,9 +3,9 @@ import {
   RotateCcw, RotateCw, Save, Search, Trash2, X,
 } from 'lucide-react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { copyFileName, copyImage, openInNewTab, requestRemove } from '../actions';
 import { isDesktop } from '../desktop';
+import { Lumina } from '../mygo';
 import { useStore, useVisibleImages } from '../store';
 import type { GalleryFilter, GalleryKind, GalleryTime, ImageItem, Point } from '../types';
 
@@ -133,7 +133,7 @@ export default function Gallery() {
 
   const reveal = (it: ImageItem) => {
     if (!isDesktop) return;
-    void invoke('reveal_in_folder', { path: it.path }).catch(() => S().toast('无法打开所在文件夹', { kind: 'error' }));
+    void Lumina.revealInFolder(it.path).catch(() => S().toast('无法打开所在文件夹', { kind: 'error' }));
   };
 
   const items: MenuEntry[] = menuItem

@@ -51,6 +51,7 @@ function picture(width, height, variant = 0) {
   return PNG.sync.write(png)
 }
 
-// Source for `npx tauri icon`, which writes every size (and icon.ico) to src-tauri/icons.
+// Master artwork, 1024×1024. Copy it to resources/icon.png (the size MyGo
+// picks up) and let `mygo build` derive the per-platform sizes from there.
 writeFileSync(path.join(out, 'app-icon.png'), picture(1024, 1024))
 console.log('Created build/icons/app-icon.png (1024×1024).')

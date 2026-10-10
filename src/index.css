@@ -467,7 +467,7 @@ video::cue {
   .main-col { position: relative; display: flex; min-width: 0; flex: 1; flex-direction: column; }
   .viewer-pane { position: relative; min-height: 0; flex: 1; }
 
-  /* ===== 浏览器里的模拟 Windows 桌面（仅非 Tauri） ===== */
+  /* ===== 浏览器里的模拟 Windows 桌面（仅网页版） ===== */
   .desktop-root { position: fixed; inset: 0; overflow: hidden; }
   .sim-window {
     position: absolute;

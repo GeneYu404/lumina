@@ -31,7 +31,7 @@ export interface GalleryFilter {
   time: GalleryTime;
 }
 
-/** Container header info parsed by the Rust `read_media_info` command.
+/** Container header info parsed by the Go shell's `readMediaInfo` call.
  *  `null` fields mean "not present / not parseable" — the HTML5 video API
  *  never exposes codec or frame rate, so this comes from the file itself. */
 export interface VideoStreamInfo {

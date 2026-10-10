@@ -1,8 +1,9 @@
 /**
- * Windows shell integration + session restore. All Rust calls are optional:
- * in a plain browser (or if a command is missing) every helper degrades quietly.
+ * Windows shell integration + session restore. All Go calls are optional:
+ * in a plain browser (or if a method is missing) every helper degrades
+ * quietly.
  */
-import { invoke } from '@tauri-apps/api/core';
+import { Lumina } from './mygo';
 import { isDesktop } from './desktop';
 import { useStore } from './store';
 import type { MediaInfo } from './types';
@@ -20,7 +21,7 @@ export type WallpaperStyle = (typeof WALLPAPER_STYLES)[number]['value'];
 export async function setWallpaper(path: string, style: WallpaperStyle): Promise<boolean> {
   if (!isDesktop) return false;
   try {
-    await invoke('set_wallpaper', { path, style });
+    await Lumina.setWallpaper(path, style);
     return true;
   } catch {
     return false;
@@ -30,7 +31,7 @@ export async function setWallpaper(path: string, style: WallpaperStyle): Promise
 export async function setShellMenu(enabled: boolean): Promise<boolean> {
   if (!isDesktop) return enabled;
   try {
-    return await invoke<boolean>('shell_menu', { enabled });
+    return await Lumina.shellMenu(enabled);
   } catch {
     return !enabled;
   }
@@ -39,7 +40,7 @@ export async function setShellMenu(enabled: boolean): Promise<boolean> {
 export async function shellMenuState(): Promise<boolean> {
   if (!isDesktop) return false;
   try {
-    return await invoke<boolean>('shell_menu_state');
+    return await Lumina.shellMenuState();
   } catch {
     return false;
   }
@@ -48,7 +49,7 @@ export async function shellMenuState(): Promise<boolean> {
 export async function assocState(): Promise<Set<string>> {
   if (!isDesktop) return new Set();
   try {
-    return new Set(await invoke<string[]>('assoc_state'));
+    return new Set((await Lumina.assocState()) ?? []);
   } catch {
     return new Set();
   }
@@ -57,7 +58,7 @@ export async function assocState(): Promise<Set<string>> {
 export async function assocSet(ext: string, enabled: boolean): Promise<boolean> {
   if (!isDesktop) return false;
   try {
-    await invoke('assoc_set', { ext, enabled });
+    await Lumina.assocSet(ext, enabled);
     return true;
   } catch {
     return false;
@@ -68,7 +69,7 @@ export async function assocSet(ext: string, enabled: boolean): Promise<boolean> 
 export async function openDefaultApps() {
   if (!isDesktop) return;
   try {
-    await invoke('open_default_apps');
+    await Lumina.openDefaultApps();
   } catch {
     /* ignore */
   }
@@ -84,7 +85,7 @@ export async function openDefaultApps() {
 export async function readMediaInfo(path: string): Promise<MediaInfo | null> {
   if (!isDesktop) return null;
   try {
-    return await invoke<MediaInfo>('read_media_info', { path });
+    return await Lumina.readMediaInfo(path);
   } catch {
     return null;
   }

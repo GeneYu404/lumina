@@ -138,28 +138,26 @@ const GROUPS: { title: string; items: Notice[] }[] = [
     items: [FFMPEG_NOTICE],
   },
   {
-    title: '前端依赖（打包进 lumina.exe）',
+    title: '前端依赖（打包进 Lumina.exe）',
     items: [
-      { name: 'React · React DOM', license: 'MIT', why: '界面框架', url: 'https://github.com/facebook/react/blob/main/LICENSE' },
-      { name: 'Vite', license: 'MIT', why: '构建工具（仅开发期，运行时不包含）', url: 'https://github.com/vitejs/vite/blob/main/LICENSE' },
-      { name: 'TypeScript', license: 'Apache-2.0', why: '类型检查（仅开发期）', url: 'https://github.com/microsoft/TypeScript/blob/main/LICENSE.txt' },
-      { name: 'Tailwind CSS', license: 'MIT', why: '样式', url: 'https://github.com/tailwindlabs/tailwindcss/blob/main/LICENSE' },
+      { name: 'React · React DOM', license: 'MIT', why: '界面框架（经 Preact 兼容层运行）', url: 'https://github.com/facebook/react/blob/main/LICENSE' },
+      { name: 'Preact', license: 'MIT', why: 'React 兼容层，实际承担渲染', url: 'https://github.com/preactjs/preact/blob/main/LICENSE' },
       { name: 'Zustand', license: 'MIT', why: '状态管理', url: 'https://github.com/pmndrs/zustand/blob/main/LICENSE' },
       { name: 'lucide-react', license: 'ISC', why: '图标', url: 'https://github.com/lucide-icons/lucide/blob/main/LICENSE' },
       { name: 'exifr', license: 'MIT', why: '读取 EXIF（拍摄参数、方向）', url: 'https://github.com/MikeKovarik/exifr/blob/master/LICENSE' },
-      { name: 'clsx · tailwind-merge', license: 'MIT', why: '类名合并', url: 'https://github.com/lukeed/clsx/blob/master/LICENSE' },
+      { name: 'clsx', license: 'MIT', why: '类名合并', url: 'https://github.com/lukeed/clsx/blob/master/LICENSE' },
+      { name: 'mygo-runtime', license: 'MIT', why: '页面侧的运行时桥（仅桌面版打包）', url: 'https://github.com/egoist/mygo/blob/master/LICENSE' },
+      { name: 'Vite · vite-plugin-singlefile', license: 'MIT', why: '构建工具（仅开发期，运行时不包含）', url: 'https://github.com/vitejs/vite/blob/main/LICENSE' },
+      { name: 'TypeScript', license: 'Apache-2.0', why: '类型检查（仅开发期）', url: 'https://github.com/microsoft/TypeScript/blob/main/LICENSE.txt' },
     ],
   },
   {
-    title: 'Rust 依赖（编译进 lumina.exe）',
+    title: 'Go 依赖（编译进 Lumina.exe）',
     items: [
-      { name: 'Tauri', license: 'MIT OR Apache-2.0', why: '桌面外壳、窗口与 IPC', url: 'https://github.com/tauri-apps/tauri/blob/dev/LICENSE' },
-      { name: 'serde · serde_json', license: 'MIT OR Apache-2.0', why: 'IPC 数据序列化', url: 'https://github.com/serde-rs/serde/blob/master/LICENSE' },
-      { name: 'image', license: 'MIT OR Apache-2.0', why: '缩略图解码与缩放', url: 'https://github.com/image-rs/image/blob/master/LICENSE' },
-      { name: 'rayon', license: 'MIT OR Apache-2.0', why: '并行解码缩略图', url: 'https://github.com/rayon-rs/rayon/blob/master/LICENSE' },
-      { name: 'kamadak-exif', license: 'MIT', why: 'EXIF 方向（竖屏照片不再被压扁）', url: 'https://github.com/kamadak-exif/kamadak-exif/blob/master/LICENSE' },
-      { name: 'winreg', license: 'MIT', why: '资源管理器右键菜单、文件关联', url: 'https://github.com/rust-lang/winreg-rs/blob/master/LICENSE' },
-      { name: 'windows-sys', license: 'MIT OR Apache-2.0', why: '调用 Win32 API', url: 'https://github.com/microsoft/windows-rs/blob/master/license-mit' },
+      { name: 'MyGo', license: 'MIT', why: '桌面外壳：窗口、WebView2、类型化 IPC', url: 'https://github.com/egoist/mygo/blob/master/LICENSE' },
+      { name: 'purego', license: 'MIT', why: 'MyGo 用来在无 cgo 前提下调用系统原生接口', url: 'https://github.com/ebitengine/purego/blob/master/LICENSE' },
+      { name: 'golang.org/x/image', license: 'BSD-3-Clause', why: 'WebP / TIFF / BMP 解码与缩放', url: 'https://cs.opensource.google/go/x/image/LICENSE' },
+      { name: 'golang.org/x/sys', license: 'BSD-3-Clause', why: 'Windows 注册表与系统调用', url: 'https://cs.opensource.google/go/x/sys/LICENSE' },
     ],
   },
   {
@@ -268,7 +266,9 @@ export function LicensesDialog({ open, onClose }: { open: boolean; onClose: () =
         <Gauge size={14} className="lic-note-icon" />
         <p>
           许可证全文随源码分发：前端依赖见 <span className="lic-strong">node_modules/*/LICENSE</span>，
-          Rust 依赖见 <span className="lic-strong">~/.cargo/registry</span> 下各 crate 的 LICENSE-MIT / LICENSE-APACHE。
+          Go 依赖见 <span className="lic-strong">go.sum</span> 列出的各模块，其 LICENSE 随
+          Go module 缓存（<span className="lic-strong">$(go env GOMODCACHE)</span>）分发。
+          桌面外壳为纯 Go、零 cgo，可在任意机器上交叉编译。
         </p>
       </section>
     </Dialog>

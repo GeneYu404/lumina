@@ -10,18 +10,18 @@ bun.lockb
 dist/
 build/
 out/
-target/
 *.tsbuildinfo
 
-# Tauri
-src-tauri/target/
-src-tauri/gen/
+# MyGo（Go 外壳）
+# build/ 已被上面的「Build outputs」覆盖；.mygo/ 是 dev 构建的临时产物
+.mygo/
 
-# FFmpeg sidecar：大二进制不入库，由 tools/fetch-ffmpeg.ps1 或手工放置
-# （LICENSE.ffmpeg.txt 很小，保留入库作为许可说明）
-src-tauri/bin/ffmpeg-*.exe
-src-tauri/ffmpeg/
-src-tauri/ffmpeg-sc/
+# FFmpeg sidecar：大二进制不入库。
+# tools/fetch-ffmpeg.ps1 下载到 resources\，mygo build 会把它复制到应用目录、
+# 与可执行文件并排。tools/build-ffmpeg-sidecar.sh 从 ffmpeg-sc\ 源码树编译，
+# 产物也落在 resources\。（LICENSE.ffmpeg.txt 很小，保留入库作为许可说明）
+resources/ffmpeg*.exe
+ffmpeg-sc/
 
 # Editor
 .vscode/*

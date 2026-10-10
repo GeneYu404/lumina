@@ -1,22 +1,23 @@
 /**
- * Bridge to the Tauri desktop shell. Everything here is a no-op in a normal
- * browser, so the same build runs on the web and inside the Windows app.
+ * Bridge to the Go + MyGo desktop shell. Everything here is a no-op in a
+ * normal browser, so the same build runs on the web and inside the Windows
+ * app.
  *
  * Performance contract (desktop only):
- *   import      → `collect_paths` (walk, cheap) + `describe_batch` probes in
+ *   import      → `collectPaths` (walk, cheap) + `describeBatch` probes in
  *                 chunks: the first chunk shows at once, the tail streams in
- *   thumbnails  → Rust decodes/resizes in parallel, one packed `thumb_batch`
- *                 invoke per import; the WebView decodes the small JPEGs itself
- *   display     → asset protocol (`https://asset.localhost/...`) streams the
- *                 original bytes; the engine's image decoder runs off-thread
- *   edits       → one `read_image` invoke for the single image being edited,
+ *   thumbnails  → Go decodes/resizes in parallel, one packed `thumbBatch`
+ *                 call per import; the WebView decodes the small JPEGs itself
+ *   display     → the `lumina://` protocol streams the original bytes with
+ *                 real Range support; the engine's image decoder runs
+ *                 off-thread
+ *   edits       → one `readImage` call for the single image being edited,
  *                 because a canvas needs same-origin bytes
  */
-import { convertFileSrc, invoke } from '@tauri-apps/api/core';
-import type { Theme } from '@tauri-apps/api/window';
+import { currentWindow, isMyGo, onFileDrop } from 'mygo-runtime';
+import { Lumina } from './mygo';
 
-export const isDesktop =
-  typeof window !== 'undefined' && '__TAURI_INTERNALS__' in (window as unknown as Record<string, unknown>);
+export const isDesktop = typeof window !== 'undefined' && isMyGo();
 
 export interface DesktopEntry {
   path: string;
@@ -27,25 +28,36 @@ export interface DesktopEntry {
   height: number;
 }
 
-/** Engine-level URL for a local file. In a browser this is just the path. */
+export type DesktopTheme = 'light' | 'dark' | null;
+
+/** Go hands `[]byte` over as base64; this is the way back. */
+function fromBase64(b64: string): Uint8Array<ArrayBuffer> {
+  const bin = atob(b64);
+  const out = new Uint8Array(new ArrayBuffer(bin.length));
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/**
+ * Engine-level URL for a local file. In a browser this is just the path.
+ *
+ * The Go shell serves local media from its own `lumina://` scheme, with
+ * Range support and a hard cap on any single response — a `<video>` streams,
+ * a stray `<img>` pointed at a video cannot pull a whole film into memory.
+ */
 export function assetUrl(path: string): string {
   if (!isDesktop) return path;
   try {
-    return convertFileSrc(path);
+    return `lumina://localhost/${encodeURIComponent(path)}`;
   } catch {
     return path;
   }
 }
 
-async function win() {
-  const { getCurrentWindow } = await import('@tauri-apps/api/window');
-  return getCurrentWindow();
-}
-
 export async function setDesktopFullscreen(value: boolean) {
   if (!isDesktop) return;
   try {
-    await (await win()).setFullscreen(value);
+    await Lumina.setFullscreen(value);
   } catch {
     /* ignore */
   }
@@ -54,16 +66,16 @@ export async function setDesktopFullscreen(value: boolean) {
 export async function setDesktopTitle(title: string) {
   if (!isDesktop) return;
   try {
-    await (await win()).setTitle(title);
+    await currentWindow.setTitle(title);
   } catch {
     /* ignore */
   }
 }
 
-export async function setDesktopTheme(theme: Theme | null) {
+export async function setDesktopTheme(theme: DesktopTheme) {
   if (!isDesktop) return;
   try {
-    await (await win()).setTheme(theme);
+    await Lumina.setTheme(theme ?? '');
   } catch {
     /* ignore */
   }
@@ -71,7 +83,7 @@ export async function setDesktopTheme(theme: Theme | null) {
 
 export async function closeDesktopWindow() {
   if (!isDesktop) return;
-  await (await win()).close();
+  await currentWindow.close();
 }
 
 /* ------------------------------ files ------------------------------ */
@@ -79,18 +91,19 @@ export async function closeDesktopWindow() {
 /** Expand folders/files into media paths — a walk, no header probes. */
 export async function collectPaths(inputs: string[]): Promise<string[]> {
   if (!isDesktop || !inputs.length) return [];
-  return invoke<string[]>('collect_paths', { inputs });
+  return (await Lumina.collectPaths(inputs)) ?? [];
 }
 
 /** Probe one bounded batch of paths into display entries (size, dimensions). */
 export async function describeBatch(paths: string[]): Promise<DesktopEntry[]> {
   if (!isDesktop || !paths.length) return [];
-  return invoke<DesktopEntry[]>('describe_batch', { paths });
+  return (await Lumina.describeBatch(paths)) ?? [];
 }
 
 /** Hand a file to the system's registered player (codec escape hatch). */
-export function openWithDefault(path: string): Promise<void> {
-  return invoke<void>('open_with_default', { path });
+export async function openWithDefault(path: string): Promise<void> {
+  if (!isDesktop) return;
+  await Lumina.openWithDefault(path);
 }
 
 export interface DesktopBoot {
@@ -100,37 +113,45 @@ export interface DesktopBoot {
   siblings: boolean;
 }
 
-/** Launch data Rust injected before any page script ran (no IPC, synchronous). */
+/** Launch data Go injected before any page script ran (no IPC, synchronous). */
 export function readBoot(): DesktopBoot | null {
   if (!isDesktop) return null;
-  const boot = (window as unknown as { __PV_BOOT__?: DesktopBoot | null }).__PV_BOOT__;
+  const boot = (window as unknown as { __LUMINA_BOOT__?: DesktopBoot | null }).__LUMINA_BOOT__;
   return boot && Array.isArray(boot.entries) && boot.entries.length ? boot : null;
 }
 
 /** The launched image's folder (it is already on screen; this is background work). */
 export async function launchSiblings(): Promise<{ entries: DesktopEntry[]; selected: number; rest: string[] }> {
   if (!isDesktop) return { entries: [], selected: 0, rest: [] };
-  return invoke<{ entries: DesktopEntry[]; selected: number; rest: string[] }>('launch_siblings');
+  return (await Lumina.launchSiblings()) ?? { entries: [], selected: 0, rest: [] };
 }
 
 /** The window starts hidden; show it once the first frame is rendered. */
 export async function showDesktopWindow() {
   if (!isDesktop) return;
   try {
-    await (await win()).show();
+    await Lumina.showWindow();
   } catch {
-    /* Rust shows it anyway after a short safety timeout */
+    /* Go also shows it after a short safety timeout */
   }
 }
 
 /**
- * One packed invoke for every thumbnail of a batch.
- * Returns a blob URL per entry (or null when Rust had no thumbnail for it).
+ * One packed call for every thumbnail of a batch.
+ * Returns a blob URL per entry (or null when Go had no thumbnail for it).
+ *
+ * Go encodes the batch as a little record stream — u32 index, u8 kind, u32
+ * offset, u32 length, then the payloads — which the old shell handed over as
+ * one ArrayBuffer. It crosses MyGo's JSON bridge as base64, so the record
+ * format is unchanged and only the transport differs.
  */
 export async function thumbBatch(paths: string[], width = 320): Promise<(string | null)[]> {
   const out: (string | null)[] = paths.map(() => null);
   if (!isDesktop || !paths.length) return out;
-  const buffer = await invoke<ArrayBuffer>('thumb_batch', { paths, width });
+  const packed = await Lumina.thumbBatch(paths, width);
+  if (!packed) return out;
+  const bytes = fromBase64(packed);
+  const buffer = bytes.buffer as ArrayBuffer;
   if (buffer.byteLength < 4) return out;
   const view = new DataView(buffer);
   const count = view.getUint32(0, true);
@@ -143,9 +164,9 @@ export async function thumbBatch(paths: string[], width = 320): Promise<(string 
     const off = view.getUint32(o + 5, true);
     const len = view.getUint32(o + 9, true);
     if (kind === 0 || index >= out.length) continue;
-    const bytes = buffer.slice(payloadStart + off, payloadStart + off + len);
+    const bytes2 = buffer.slice(payloadStart + off, payloadStart + off + len);
     const type = kind === 2 ? 'image/png' : 'image/jpeg';
-    out[index] = URL.createObjectURL(new Blob([bytes], { type }));
+    out[index] = URL.createObjectURL(new Blob([bytes2], { type }));
   }
   return out;
 }
@@ -153,57 +174,25 @@ export async function thumbBatch(paths: string[], width = 320): Promise<(string 
 /** Same-origin bytes for the single image an edit/export needs. */
 export async function readItemBytes(path: string): Promise<Blob> {
   if (!isDesktop) throw new Error('not desktop');
-  const buffer = await invoke<ArrayBuffer>('read_image', { path });
-  return new Blob([buffer]);
+  const packed = await Lumina.readImage(path);
+  return new Blob([fromBase64(packed)]);
 }
 
-/** Native file picker (paths come from Rust, so the whole batch stays off JS). */
+/** Native file picker (paths come from Go, so the whole batch stays off JS). */
 export async function pickImages(): Promise<string[]> {
   if (!isDesktop) return [];
-  const { open } = await import('@tauri-apps/plugin-dialog');
-  const res = await open({
-    multiple: true,
-    directory: false,
-    title: '选择图片或视频',
-    filters: [
-      {
-        name: '图片和视频',
-        extensions: [
-          'jpg', 'jpeg', 'jfif', 'png', 'apng', 'gif', 'webp', 'avif', 'bmp', 'ico', 'svg', 'tif', 'tiff',
-          'mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi', 'wmv', 'flv',
-        ],
-      },
-      {
-        name: '图片',
-        extensions: ['jpg', 'jpeg', 'jfif', 'png', 'apng', 'gif', 'webp', 'avif', 'bmp', 'ico', 'svg', 'tif', 'tiff'],
-      },
-      { name: '视频', extensions: ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi', 'wmv', 'flv'] },
-    ],
-  });
-  if (!res) return [];
-  return Array.isArray(res) ? res.map(String) : [String(res)];
+  return (await Lumina.pickImages()) ?? [];
 }
 
 export async function pickFolder(): Promise<string[]> {
   if (!isDesktop) return [];
-  const { open } = await import('@tauri-apps/plugin-dialog');
-  const res = await open({ multiple: false, directory: true, title: '选择包含图片的文件夹' });
-  if (!res) return [];
-  const value = Array.isArray(res) ? res[0] : res;
-  return value ? [String(value)] : [];
+  return (await Lumina.pickFolder()) ?? [];
 }
 
 /** Observe the native drag-drop event (paths, not File objects). */
 export async function onDesktopPaths(handler: (paths: string[]) => void): Promise<() => void> {
   if (!isDesktop) return () => undefined;
-  const { listen } = await import('@tauri-apps/api/event');
-  const un = await listen<{ paths?: string[] }>('tauri://drag-drop', (e) => {
-    const paths = e.payload?.paths ?? [];
+  return onFileDrop(({ paths }) => {
     if (paths.length) handler(paths);
   });
-  return () => {
-    void un();
-  };
 }
-
-

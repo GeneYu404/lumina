@@ -60,9 +60,9 @@ import VideoControls from './VideoControls';
 
 const S = useStore.getState;
 
-/** Same cap the Rust side keeps for one whole-file response: past this the
- *  byte fallback would move the crash from Rust into the renderer instead of
- *  removing it (a multi-GB video must never be copied into JS memory). */
+/** Same cap the Go shell keeps for one whole-file response: past this the
+ *  byte fallback would move the crash from the shell into the renderer instead
+ *  of removing it (a multi-GB video must never be copied into JS memory). */
 const MAX_BYTE_FALLBACK = 128 * 1024 * 1024;
 
 /**
@@ -425,7 +425,7 @@ export default function Viewer() {
     if (!item) return;
     const cur = S().images.find((i) => i.id === item.id);
     if (cur && !cur.width) {
-      // Desktop path items arrive with dimensions Rust already adjusted for
+      // Desktop path items arrive with dimensions the Go shell already adjusted for
       // EXIF orientation. File objects opened from the web picker don't, so we
       // patch orientation once on first paint and store the *visual* size.
       const file = cur.file;
@@ -652,7 +652,7 @@ export default function Viewer() {
               // Chromium/WebView2 rotates images according to EXIF Orientation
               // by default; pair that with a raw pixel size and the container
               // ends up rotated against its content. We report the visual size
-              // ourselves (Rust for path items, `handleLoaded` for File
+              // ourselves (the Go shell for path items, `handleLoaded` for File
               // objects), so tell the engine not to also apply Orientation.
               imageOrientation: 'none',
             }}

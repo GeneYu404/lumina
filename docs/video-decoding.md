@@ -1,10 +1,10 @@
 # 视频解码技术选型
 
-> 状态：**第一阶段**已落地——mp4/m4v/mov/webm/mkv/avi/wmv/flv 经 asset 协议交给
-> `<video>` 硬件解码；视频海报帧由同一解码器截取（`src/utils/videoThumb.ts`、Rust 端
-> `collect_paths`/`thumb_batch`）。**第二阶段已开工**：随包携带一个 FFmpeg 进程
+> 状态：**第一阶段**已落地——mp4/m4v/mov/webm/mkv/avi/wmv/flv 经 `lumina://` 协议交给
+> `<video>` 硬件解码；视频海报帧由同一解码器截取（`src/utils/videoThumb.ts`、Go 端
+> `collectPaths`/`thumbBatch`）。**第二阶段已开工**：随包携带一个 FFmpeg 进程
 > （sidecar）为 Media Foundation 解不了的音轨兜底，当前只落地了接缝
-> （`src-tauri/src/ffmpeg_sidecar.rs` + `ffmpeg_probe` 命令），播放管线待接。
+> （`internal/sidecar/sidecar.go` + `Lumina.ffmpegProbe`），播放管线待接。
 > 决策依据见下。
 
 结论：**主播放路径用 WebView2 自带的 `<video>` 硬件解码**（体积增量为 0，覆盖绝大多数
@@ -15,17 +15,18 @@ WebView 解不了的音轨——首个目标是 **E-AC-3（Dolby Digital Plus）
 
 评估过三种形态：
 
-| 方案 | 体积 | Rust 侧成本 | 结论 |
+| 方案 | 体积 | 外壳侧成本 | 结论 |
 | --- | --- | --- | --- |
 | 只用 WebView2 | 0 | 无 | E-AC-3 直接播不了，放弃 |
 | FFmpeg DLL + FFI 链接 | 与 exe 同量级 | 需 `unsafe` FFI + Windows import lib（MSYS2 的 MinGW 产物与 msvc ABI 不通，得走 vcpkg） | 成本高、无体积优势，否决 |
-| **FFmpeg exe sidecar** | 最小化构建 6.2 MB（实测）| `spawn` + 管道，零 unsafe | **采用** |
+| **FFmpeg exe sidecar** | 最小化构建 6.2 MB（实测）| `exec.Command` + 管道，无 unsafe | **采用** |
 
 关键认知：**体积由 configure 裁剪决定，与静态/动态无关**。gyan 的 release-essentials
 预编译版里单个 `ffmpeg.exe` 就有 100 MB（另含 ffplay/ffprobe 各 100 MB），必须自己
 `--disable-everything` 最小化编译才适合随包分发。实测自编译产物 **6.2 MB**，
-整个免安装目录 12.5 MB，许可证纯 LGPL 2.1+（比预编译版的 GPL 组件更干净）。
-构建脚本见 `tools/build-ffmpeg-sidecar.sh`，入口 `bun run build:sidecar`。
+整个免安装目录约 16 MB，许可证纯 LGPL 2.1+（比预编译版的 GPL 组件更干净）。
+构建脚本见 `tools/build-sidecar.ps1`，入口 `bun run build:sidecar`；
+获取预编译版用 `bun run fetch:ffmpeg`。
 
 ## 1. 现成能力：WebView2（Edge 内核）
 
@@ -39,7 +40,7 @@ WebView 解不了的音轨——首个目标是 **E-AC-3（Dolby Digital Plus）
 | AVI / WMV / FLV / RMVB / ProRes | ❌ | 不支持 |
 | **E-AC-3 / Dolby Digital Plus** | ❌ | Media Foundation 无内置解码器 → 走 sidecar 兜底 |
 
-已核对 Tauri 源码（`crates/tauri/src/protocol/asset.rs`）：asset 协议支持 **HTTP Range** 请求（单次响应最多约 1 MB，浏览器会连续请求），因此 `<video src={asset URL}>` 可以流式播放和拖动进度。协议还会返回 `Access-Control-Allow-Origin`，设置 `crossOrigin="anonymous"` 后可以把视频帧画到 canvas 上（例如截取封面）。
+协议核对过（`internal/asset/asset.go`）：`lumina://` 支持 **HTTP Range** 请求（单次响应最多 1 MB，浏览器会连续请求），因此 `<video src={lumina:// URL}>` 可以流式播放和拖动进度。协议还会返回 `Access-Control-Allow-Origin`，设置 `crossOrigin="anonymous"` 后可以把视频帧画到 canvas 上（例如截取封面）。此外每次响应都有硬上限：一个不带 `Range` 的大文件请求会被 `413` 拒绝，而不是把整部电影读进内存。
 
 ## 2. 为什么不把 FFmpeg 链进主程序
 
@@ -59,27 +60,30 @@ WebView 解不了的音轨——首个目标是 **E-AC-3（Dolby Digital Plus）
 ### 主路径（WebView2）
 
 - 媒体条目 `kind: 'image' | 'video'`，扩展名白名单加入 `mp4 m4v mov webm mkv`；
-  Rust 的 `collect_paths` 和文件关联同步支持。
-- 查看器对视频使用原生 `<video controls>`，地址走 asset 协议；空格键在视频上
+  Go 的 `collectPaths` 和文件关联同步支持。
+- 查看器对视频使用原生 `<video controls>`，地址走 `lumina://` 协议；空格键在视频上
   改为暂停/播放。裁剪、调色、EXIF 对视频禁用。
-- 视频缩略图：JS 端用 `<video>` 加载后截第一帧；Rust 端不参与（成本高、无解码器时反而失败）。
+- 视频缩略图：JS 端用 `<video>` 加载后截第一帧；Go 端不参与（成本高、无解码器时反而失败）。
 - 播放失败时（`error` 事件，或 `canPlayType` 判断不支持）给出明确提示：HEVC
   提示安装"HEVC 视频扩展"，其他格式提示"此格式不受支持，可用其他播放器打开"，
   并提供"用默认应用打开"。
 
 ### 兜底路径（FFmpeg sidecar，接缝已通）
 
-- 随包携带 `ffmpeg-x86_64-pc-windows-msvc.exe`（Tauri `externalBin`，构建时落在
-  可执行文件同级）。获取方式：`bun run fetch:ffmpeg`。
-- `src-tauri/src/ffmpeg_sidecar.rs` 负责定位（`$LUMINA_FFMPEG` → exe 同级 →
-  profile 目录 → `bin/`）、spawn 与解码；解码命令固定为
-  `-map 0:a:0 -f s16le -ac 2 -ar 48000 -`，stdout 即 PCM。
-- `ffmpeg_probe` 命令对已登记路径做一次接缝检查，返回
-  `{ available, hasEac3, pcmBytes, detail }`；读取上限 4 MB 后主动 kill，避免
-  把探针变成整片解码。
-- 单元测试（`cargo test ffmpeg_sidecar`）由 Rust 手写 1 秒正弦 WAV 当输入，解回 PCM
-  并校验 WAV 头里读出的采样率/声道，覆盖「定位 → spawn → 解码 → eac3 解码器存在」
-  四件事。这样 fixture 不依赖 lavfi/sine 滤镜，最小构建照样能跑测试。
+- 随包携带 `ffmpeg-x86_64-pc-windows-msvc.exe`，放在 `resources\`，`mygo build` 会把它
+  复制到可执行文件同级。获取方式：`bun run fetch:ffmpeg`。
+- `internal/sidecar/sidecar.go` 负责定位（`$LUMINA_FFMPEG` → exe 同级 → 上一级 →
+  `resources/` → `bin/`）、spawn 与解码；解码命令固定为
+  `-map 0:a:0 -c:a pcm_s16le -f wav -`（WAV 头随 stdout 一起回来，调用方由此读到
+  真实采样率与声道，而不必强制指定）。
+- `Lumina.ffmpegProbe` 对已登记路径做一次接缝检查，返回
+  `{ available, hasEac3, sampleRate, channels, pcmBytes, detail }`；读取上限 4 MB
+  后主动 kill，避免把探针变成整片解码。
+- `Lumina.ffmpegStream` 把 PCM 以 64 KB 为一块经 MyGo 的 Channel 推给前端（Go 的
+  `[]byte` 在桥上是 base64），`Lumina.ffmpegStop(id)` 终止会话。
+- 单元测试（`go test ./internal/sidecar/`）由 Go 手写 WAV 夹具当输入，解回 PCM
+  并校验 WAV 头里读出的采样率/声道，覆盖「定位 → WAV 头解析」两件事；
+  不依赖外部 ffmpeg 可执行文件，最小构建照样能跑测试。
 - **已完成体积目标**：100 MB 预编译版 → 6.2 MB 自编译最小构建（`bun run build:sidecar`）。
 - **未完成**：把 PCM 接到前端（WebAudio/AudioWorklet）与视频画面的 A/V 同步。
 
@@ -93,7 +97,7 @@ WebView 解不了的音轨——首个目标是 **E-AC-3（Dolby Digital Plus）
 
 ## 5. 待办
 
-- 接通播放：Rust 侧流式输出 PCM → 前端 AudioWorklet 环形缓冲 → 与 `<video muted>`
+- 接通播放：Go 侧流式输出 PCM → 前端 AudioWorklet 环形缓冲 → 与 `<video muted>`
   的 `currentTime` 对齐；WebCodecs 的 `AudioDecoder` 不支持 eac3，PCM 是唯一接缝。
-- 何时启用兜底：仅在 `media_info` 报出 WebView 解不了的音轨时 spawn sidecar，
+- 何时启用兜底：仅在 `readMediaInfo` 报出 WebView 解不了的音轨时 spawn sidecar，
   正常文件仍走零成本的主路径。

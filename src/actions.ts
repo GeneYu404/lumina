@@ -94,7 +94,7 @@ async function adoptEntries(entries: DesktopEntry[], opts: { replace?: boolean; 
   if (items[index]) st().goTo(items[index].id);
 }
 
-/** Desktop: paths in → Rust walk + batched probe → store. */
+/** Desktop: paths in → Go-side walk + batched probe → store. */
 export async function openPaths(paths: string[], opts: { replace?: boolean; folder?: boolean } = {}) {
   if (!isDesktop || !paths.length) return;
   const s = st();
@@ -245,7 +245,7 @@ export async function loadSamples() {
 
 /**
  * Desktop direct open (Explorer “打开方式” / double click). The launched image
- * is already on screen — Rust injected it before the page loaded. Here we only
+ * is already on screen — the Go shell injected it before the page loaded. Here we only
  * do background work: merge the rest of its folder, then fill thumbnails.
  */
 export async function openLaunchFiles() {
@@ -321,7 +321,7 @@ export function openInSystemPlayer(path: string | undefined) {
 /**
  * Pick a subtitle file for the playing video (.srt / .vtt / .ass / .ssa) and
  * return it as a WebVTT blob URL. Resolves null when the dialog is cancelled;
- * a plain web input works both in the browser and inside Tauri.
+ * a plain web input works both in the browser and inside the desktop shell.
  */
 export function pickSubtitle(): Promise<{ name: string; url: string } | null> {
   return new Promise((resolve) => {

@@ -1,12 +1,11 @@
-<#
-  下载 FFmpeg release essentials（gyan.dev 官方静态构建）到 src-tauri\bin\，
-  按 Tauri externalBin 规则命名：ffmpeg-x86_64-pc-windows-msvc.exe。
-
+﻿<#
+  下载 FFmpeg release essentials（gyan.dev 官方静态构建）到 resources\，
+  resources\ 里的文件会被 mygo build 原样复制到应用目录、与可执行文件并排，
+  Go 外壳的 sidecar 查找顺序正好先命中「exe 同级目录」。
   用法：
     bun run fetch:ffmpeg              # 已存在则跳过
     bun run fetch:ffmpeg -- -Force    # 重新下载
-    powershell -File tools\fetch-ffmpeg.ps1 -Stage   # 构建后：把 sidecar 拷进 target\release\
-
+    powershell -File tools\fetch-ffmpeg.ps1 -Stage   # 构建后：把 sidecar 拷进 build\ 产物目录
   下载失败时自动回退拷贝本机 winget 安装的 ffmpeg（-NoFallback 禁止）。
   产物不入库（.gitignore 排除），仓库里只保留本脚本与许可证说明。
 #>
@@ -20,14 +19,14 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot          # tools\ 的上级 = 仓库根
-$binDir = Join-Path $root 'src-tauri\bin'
+$binDir = Join-Path $root 'resources'
 $target = Join-Path $binDir 'ffmpeg-x86_64-pc-windows-msvc.exe'
 
-# -Stage: 构建完成后把 sidecar 拷到便携版目录（target\release 即交付目录）。
+# -Stage: 构建完成后把 sidecar 拷进 mygo build 的产物目录（与 Lumina.exe 并排）。
 if ($Stage) {
     if (-not (Test-Path $target)) { throw "缺少 $target，先跑 bun run fetch:ffmpeg" }
-    foreach ($dest in @((Join-Path $root 'src-tauri\target\release'), (Join-Path $root 'src-tauri\target\debug'))) {
-        if (Test-Path (Split-Path $dest -Parent)) {
+    foreach ($dest in @((Join-Path $root 'build\windows-amd64'), (Join-Path $root 'build\darwin-arm64'), (Join-Path $root 'build\linux-amd64'))) {
+        if (Test-Path $dest) {
             New-Item -ItemType Directory -Force -Path $dest | Out-Null
             Copy-Item $target $dest -Force
             Write-Host "staged -> $dest" -ForegroundColor DarkGray

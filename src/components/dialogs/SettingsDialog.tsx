@@ -20,6 +20,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { isDesktop } from '../../desktop';
 import { useStore } from '../../store';
 import type { SlideTransition, ViewerBg } from '../../types';
 import { cn } from '../../utils/cn';
@@ -312,7 +313,9 @@ export default function SettingsDialog() {
           <div className="set-about-body">
             <div className="set-about-title">拾光 Lumina 1.0</div>
             <div className="set-about-desc">
-              Windows 11 风格 · React + Vite + Tailwind CSS。所有图片仅在本地浏览器中处理，不会上传。
+              {isDesktop
+                ? 'Windows 11 风格 · React + Vite + Go（MyGo）外壳 · 手写 CSS。所有图片仅在本机处理，不会上传。'
+                : 'Windows 11 风格 · React + Vite · 手写 CSS。所有图片仅在浏览器本地处理，不会上传。'}
             </div>
           </div>
           <Button variant="standard" onClick={() => setLicenses(true)}>

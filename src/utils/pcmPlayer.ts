@@ -10,8 +10,9 @@
  * The worklet is built from a Blob URL rather than a separate file so the
  * single-file bundle (vite-plugin-singlefile) stays single-file.
  */
-import { Channel, invoke } from '@tauri-apps/api/core';
+import { Channel } from 'mygo-runtime';
 import { isDesktop } from '../desktop';
+import { Lumina } from '../mygo';
 
 export interface PcmStreamInfo {
   id: number;
@@ -97,6 +98,26 @@ export interface PcmPlayerOptions {
 /** Enough decoded audio to start playing smoothly. */
 const PREROLL_FRAMES = 48_000; // ~1 s at 48 kHz
 
+/**
+ * Decode one PCM chunk into bytes.
+ *
+ * The Go shell sends base64, because a Go `[]byte` crosses MyGo's JSON bridge
+ * that way. Raw bytes and byte arrays are still accepted so the player keeps
+ * working if the transport ever changes.
+ */
+function decodePcmChunk(raw: string | ArrayBuffer | number[] | null): ArrayBuffer | null {
+  if (!raw) return null;
+  if (typeof raw === 'string') {
+    if (!raw) return null; // the end-of-stream marker
+    const bin = atob(raw);
+    const out = new Uint8Array(new ArrayBuffer(bin.length));
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out.buffer;
+  }
+  if (raw instanceof ArrayBuffer) return raw;
+  return new Uint8Array(raw).buffer;
+}
+
 export class PcmPlayer {
   private ctx: AudioContext | null = null;
   private node: AudioWorkletNode | null = null;
@@ -163,17 +184,15 @@ export class PcmPlayer {
       if (this.ctx.state === 'suspended') await this.ctx.resume();
       this.node?.port.postMessage({ type: 'flush' } satisfies WorkletIn);
 
-      const channel = new Channel<ArrayBuffer>();
+      // Go hands `[]byte` over the bridge as base64, so each chunk arrives as
+      // a string — an empty one is the end-of-stream marker.
+      const channel = new Channel<string>();
       channel.onmessage = (data) => this.onChunk(data);
-      // The channel is kept alive by the pending invoke; holding a reference
+      // The channel is kept alive by the pending call; holding a reference
       // here documents that, and stops GC from closing it mid-stream.
       this.channelRef = channel;
 
-      this.info = await invoke<PcmStreamInfo>('ffmpeg_stream', {
-        path: this.opts.path,
-        start,
-        onPcm: channel,
-      });
+      this.info = await Lumina.ffmpegStream(this.opts.path, start, channel);
       this.opts.onState?.('buffering');
     } catch (e) {
       this.opts.onError?.(String(e));
@@ -181,16 +200,15 @@ export class PcmPlayer {
     }
   }
 
-  private channelRef: Channel<ArrayBuffer> | null = null;
+  private channelRef: Channel<string> | null = null;
 
-  private onChunk(raw: ArrayBuffer | number[] | null): void {
+  private onChunk(raw: string | ArrayBuffer | number[] | null): void {
     // A message from a previous stream (we seeked or switched files) must not
     // land in the new ring buffer.
     if (this.disposed || !this.node || !this.channelRef) return;
-    // Tauri hands raw channel bodies over as an ArrayBuffer; a JSON fallback
-    // would arrive as a number array, so normalise both.
-    const data: ArrayBuffer | null =
-      raw instanceof ArrayBuffer ? raw : raw ? new Uint8Array(raw).buffer : null;
+    // The Go side sends base64 (its `[]byte` crosses the JSON bridge that
+    // way). Normalise it to bytes; an empty payload is end-of-stream.
+    const data: ArrayBuffer | null = decodePcmChunk(raw);
     if (!data || data.byteLength === 0) {
       this.eos = true;
       this.opts.onState?.('ended');
@@ -251,7 +269,7 @@ export class PcmPlayer {
 
   private teardownStream(): void {
     if (this.info) {
-      void invoke('ffmpeg_stop', { id: this.info.id }).catch(() => undefined);
+      void Lumina.ffmpegStop(this.info.id).catch(() => undefined);
       this.info = null;
     }
     this.channelRef = null;

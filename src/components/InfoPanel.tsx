@@ -75,7 +75,7 @@ function useExif(item: ImageItem | null): { data: ExifData | null; loading: bool
 }
 
 /// Container headers for the open video: duration, codecs, frame rate. The
-/// HTML5 video API exposes none of that, so the Rust side reads the file's
+/// HTML5 video API exposes none of that, so the Go shell reads the file's
 /// own headers — quietly resolving to null in a plain browser or on
 /// containers we don't parse (the <video> element's duration still fills in).
 function useMediaInfo(item: ImageItem | null): { info: MediaInfo | null; loading: boolean } {
@@ -281,7 +281,7 @@ export default function InfoPanel() {
   if (item.flipH || item.flipV) edits.push('已翻转');
   if (isAdjusted(item.adjust)) edits.push('已调色');
 
-  // Rust hands back native Windows paths, so the separator is a backslash —
+  // The Go shell hands back native Windows paths, so the separator is a backslash —
   // testing for '/' alone hid the location row for every desktop file.
   const lastSep = Math.max(item.path.lastIndexOf('/'), item.path.lastIndexOf('\\'));
   const folder = lastSep > 0 ? item.path.slice(0, lastSep) : '';

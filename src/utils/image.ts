@@ -143,7 +143,7 @@ export async function makeThumb(url: string, max = 320): Promise<{ thumb: string
 
 /** Resolve the EXIF orientation of an image behind `url` (used by web-mode
  *  thumbnail/stat rendering). Path items already report the visual size from
- *  Rust; this only matters for File objects. */
+ *  the Go shell; this only matters for File objects. */
 async function readOrientationFromBlob(url: string): Promise<number> {
   // Cheap path: we already have a Blob cached from the web picker? Not here.
   // For images hosted over http(s) we fetch; for blob: URLs we fetch them too.
@@ -178,8 +178,8 @@ export interface RenderOptions {
 export async function renderItem(item: ImageItem, opts: RenderOptions = {}): Promise<HTMLCanvasElement> {
   if (item.remote) throw new Error('remote');
   if (item.kind === 'video') throw new Error('video');
-  // Desktop path items display via the asset protocol, but a canvas needs
-  // same-origin bytes: fetch this one file through Rust (single invoke).
+  // Desktop path items display via the lumina:// protocol, but a canvas needs
+  // same-origin bytes: fetch this one file through the Go shell (single call).
   let source = item.url;
   if (!item.file && !item.url.startsWith('blob:') && item.path) {
     try {
