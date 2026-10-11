@@ -19,7 +19,7 @@
             t = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
           }
           document.documentElement.setAttribute("data-theme", t);
-          if (window.__TAURI_INTERNALS__) document.documentElement.setAttribute("data-desktop", "true");
+          if ("__LUMINA_BOOT__" in window) document.documentElement.setAttribute("data-desktop", "true");
         } catch (e) {}
       })();
     </script>
