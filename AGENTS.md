@@ -90,20 +90,6 @@ React 19 源码跑在 **Preact 兼容层**上（`vite.config.ts` 的
    `@tauri-apps` / `src-tauri`。外壳换过一次，这几个词最容易漏（曾经漏在
    「关于」页的标题行和许可对话框里）。
 
-### ⚠️ 本机装有亿赛通（E-SafeNet）DLP
-
-部分文件在磁盘上是**加密**的（字节头 `62 14 23 65`），只有白名单进程能读到明文。
-Git 属于白名单，所以 `git status` 看不出问题，但 `git diff` 会显示中文乱码。
-
-一旦发现某个文件「莫名其妙变成乱码」或变成二进制，从 git 对象库取明文再写回
-**不要试图手工修内容**，也**不要用 `git checkout --`**（写回时会再次被加密，
-把好文件变成密文）：
-
-```powershell
-git show HEAD:<路径> > "$env:TEMP\restore.json"   # git 直出，不经文本管道
-Copy-Item "$env:TEMP\restore.json" ".\<路径>" -Force
-```
-
 ## 5. 验证步骤
 
 完成代码改动后按顺序验证，**不要省掉 `bun run typecheck`**（TypeScript 7 比 5 严格得多）：
